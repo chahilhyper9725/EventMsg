@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EventMsg BLE Tester</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { margin: 5px; padding: 10px; }
+        #log { 
+            border: 1px solid #ccc; 
+            padding: 10px; 
+            height: 200px; 
+            overflow-y: auto; 
+            font-family: monospace;
+        }
+        .stats {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f0f0;
+        }
+        .form-group {
+            margin: 10px 0;
+        }
+        label {
+            display: inline-block;
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>EventMsg BLE Tester</h1>
+    
+    <button id="connectBtn">Connect to Device</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+    
+    <div class="stats">
+        <div>Messages Sent: <span id="msgCount">0</span></div>
+        <div>Bytes Sent: <span id="bytesSent">0</span></div>
+        <div>Throughput: <span id="throughput">0</span> KB/s</div>
+    </div>
+
+    <div class="form-group">
+        <label>Event Name:</label>
+        <input type="text" id="eventName" value="TEST">
+    </div>
+    
+    <div class="form-group">
+        <label>Data:</label>
+        <input type="text" id="eventData" value="Hello World">
+    </div>
+    
+    <div class="form-group">
+        <label>Receiver:</label>
+        <input type="text" id="receiver" value="FF" size="2">
+    </div>
+    
+    <div class="form-group">
+        <label>Group:</label>
+        <input type="text" id="group" value="00" size="2">
+    </div>
+    
+    <div class="form-group">
+        <label>Flags:</label>
+        <input type="text" id="flags" value="80" size="2">
+    </div>
+    
+    <button id="sendBtn" disabled>Send Message</button>
+    <button id="startTest" disabled>Start Throughput Test</button>
+    <button id="stopTest" disabled>Stop Test</button>
+    
+    <h3>Log</h3>
+    <div id="log"></div>
+
+    <script>
+        let device = null;
+        let server = null;
+        let txCharacteristic = null;
+        let rxCharacteristic = null;
+        let testInterval = null;
+        let startTime = 0;
+        let totalBytes = 0;
+        let messageCount = 0;
+
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHARACTERISTIC_UUID_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHARACTERISTIC_UUID_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStats() {
+            const elapsedTime = (Date.now() - startTime) / 1000;
+            const throughput = totalBytes / (1024 * elapsedTime);
+            
+            document.getElementById('msgCount').textContent = messageCount;
+            document.getElementById('bytesSent').textContent = totalBytes;
+            document.getElementById('throughput').textContent = throughput.toFixed(2);
+        }
+
+        // Control characters
+        const SOH = 0x01;
+        const STX = 0x02;
+        const US = 0x1F;
+        const EOT = 0x04;
+        const ESC = 0x1B;
+
+        function byteStuff(input) {
+            const controlChars = [SOH, STX, US, EOT, ESC];
+            const output = [];
+            
+            for (const byte of input) {
+                if (controlChars.includes(byte)) {
+                    output.push(ESC);
+                    output.push(byte ^ 0x20);
+                } else {
+                    output.push(byte);
+                }
+            }
+            
+            return new Uint8Array(output);
+        }
+
+        function hexToBytes(hex) {
+            return new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        }
+
+        function createHeader(sender, receiver, group, flags, msgId) {
+            const header = new Uint8Array([
+                sender,
+                receiver,
+                group,
+                flags,
+                (msgId >> 8) & 0xFF,
+                msgId & 0xFF
+            ]);
+            return byteStuff(header);
+        }
+
+        async function sendEventMessage(name, data, receiver, group, flags) {
+            // Create header with byte stuffing
+            const msgId = messageCount; // Use messageCount as msgId
+            const stuffedHeader = createHeader(
+                0x00, // Local address (web client)
+                parseInt(receiver, 16),
+                parseInt(group, 16),
+                parseInt(flags, 16),
+                msgId
+            );
+
+            // Convert and stuff event name & data
+            const encoder = new TextEncoder();
+            const nameBytes = byteStuff(encoder.encode(name));
+            const dataBytes = byteStuff(encoder.encode(data));
+
+            // Build complete message
+            const message = new Uint8Array([
+                SOH,
+                ...stuffedHeader,
+                STX,
+                ...nameBytes,
+                US,
+                ...dataBytes,
+                EOT
+            ]);
+
+
+            if (rxCharacteristic) {
+                await rxCharacteristic.writeValue(message);
+                totalBytes += message.length;
+                messageCount++;
+                updateStats();
+            }
+        }
+
+        async function startThroughputTest() {
+            document.getElementById('startTest').disabled = true;
+            document.getElementById('stopTest').disabled = false;
+            startTime = Date.now();
+            totalBytes = 0;
+            messageCount = 0;
+
+            // Send messages every 100ms
+            testInterval = setInterval(async () => {
+                const testData = "X".repeat(400); // 100 byte payload
+                await sendEventMessage("TEST", testData, "FF", "00", "80");
+            }, 5);
+        }
+
+        function stopThroughputTest() {
+            document.getElementById('startTest').disabled = false;
+            document.getElementById('stopTest').disabled = true;
+            if (testInterval) {
+                clearInterval(testInterval);
+                testInterval = null;
+            }
+        }
+
+        async function connect() {
+            try {
+                log('Requesting Bluetooth Device...');
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{
+                        services: [SERVICE_UUID]
+                    }]
+                });
+
+                log('Connecting to device...');
+                server = await device.gatt.connect();
+
+                log('Getting Service...');
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                log('Getting Characteristics...');
+                rxCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_RX);
+                txCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_TX);
+
+                await txCharacteristic.startNotifications();
+                txCharacteristic.addEventListener('characteristicvaluechanged', event => {
+                    const value = new Uint8Array(event.target.value.buffer);
+                    const decoder = new TextDecoder();
+                    
+                    // Parse protocol message
+                    try {
+                        let pos = 0;
+                        
+                        // Check SOH
+                        if (value[pos++] !== 0x01) {
+                            log('Error: Invalid message format (missing SOH)');
+                            return;
+                        }
+
+                        // Find STX
+                        let headerEnd = pos;
+                        while (headerEnd < value.length && value[headerEnd] !== 0x02) headerEnd++;
+                        if (headerEnd >= value.length) {
+                            log('Error: Invalid message format (missing STX)');
+                            return;
+                        }
+
+                        // Added byte unstuffing function
+                        function byteUnstuff(data, start, end) {
+                            const output = [];
+                            let escapedMode = false;
+                            
+                            for(let i = start; i < end; i++) {
+                                if(escapedMode) {
+                                    output.push(data[i] ^ 0x20);
+                                    escapedMode = false;
+                                } else if(data[i] === ESC) {
+                                    escapedMode = true;
+                                } else {
+                                    output.push(data[i]);
+                                }
+                            }
+                            return new Uint8Array(output);
+                        }
+
+                        // Parse and unstuff header
+                        const headerBytes = byteUnstuff(value, pos, headerEnd);
+                        if(headerBytes.length !== 6) {
+                            log('Error: Invalid header length after unstuffing');
+                            return;
+                        }
+
+                        const header = {
+                            sender: headerBytes[0].toString(16).padStart(2, '0').toUpperCase(),
+                            receiver: headerBytes[1].toString(16).padStart(2, '0').toUpperCase(),
+                            group: headerBytes[2].toString(16).padStart(2, '0').toUpperCase(),
+                            flags: headerBytes[3].toString(16).padStart(2, '0').toUpperCase(),
+                            msgId: (headerBytes[4] << 8) | headerBytes[5]
+                        };
+
+                        // Skip STX
+                        pos = headerEnd + 1;
+
+                        // Find US
+                        let nameEnd = pos;
+                        while (nameEnd < value.length && value[nameEnd] !== 0x1F) nameEnd++;
+                        if (nameEnd >= value.length) {
+                            log('Error: Invalid message format (missing US)');
+                            return;
+                        }
+
+                        // Unstuff and decode event name
+                        const unstuffedName = byteUnstuff(value, pos, nameEnd);
+                        const eventName = decoder.decode(unstuffedName);
+                        
+                        // Skip US
+                        pos = nameEnd + 1;
+
+                        // Find EOT
+                        let dataEnd = pos;
+                        while (dataEnd < value.length && value[dataEnd] !== 0x04) dataEnd++;
+                        if (dataEnd >= value.length) {
+                            log('Error: Invalid message format (missing EOT)');
+                            return;
+                        }
+
+                        // Unstuff and decode event data
+                        const unstuffedData = byteUnstuff(value, pos, dataEnd);
+                        const eventData = decoder.decode(unstuffedData);
+
+                        // Log parsed message
+                        log(`Received Message:
+    Event: ${eventName}
+    Data: ${eventData}
+    From: 0x${header.sender}
+    To: 0x${header.receiver}
+    Group: 0x${header.group}
+    Flags: 0x${header.flags}
+    MsgID: ${header.msgId}`);
+
+                    } catch (error) {
+                        log('Error parsing message: ' + error);
+                        // Log raw data for debugging
+                        const hexData = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                        log('Raw data: ' + hexData);
+                    }
+                });
+
+                log('Connected!');
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('startTest').disabled = false;
+
+            } catch(error) {
+                log('Error: ' + error);
+            }
+        }
+
+        async function disconnect() {
+            if (device && device.gatt.connected) {
+                await device.gatt.disconnect();
+            }
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('startTest').disabled = true;
+            document.getElementById('stopTest').disabled = true;
+            log('Disconnected');
+        }
+
+        // Event Listeners
+        document.getElementById('connectBtn').addEventListener('click', connect);
+        document.getElementById('disconnectBtn').addEventListener('click', disconnect);
+        document.getElementById('sendBtn').addEventListener('click', async () => {
+            const name = document.getElementById('eventName').value;
+            const data = document.getElementById('eventData').value;
+            const receiver = document.getElementById('receiver').value;
+            const group = document.getElementById('group').value;
+            const flags = document.getElementById('flags').value;
+            
+            await sendEventMessage(name, data, receiver, group, flags);
+        });
+        document.getElementById('startTest').addEventListener('click', startThroughputTest);
+        document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
+    </script>
+</body>
+</html>

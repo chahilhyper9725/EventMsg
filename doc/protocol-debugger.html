@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Protocol Debugger</title>
+  <!-- Tailwind CSS -->
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .byte {
+      display: inline-block;
+      width: 2.5rem;
+      height: 2.5rem;
+      margin: 0.25rem;
+      border-radius: 0.25rem;
+      text-align: center;
+      line-height: 2.5rem;
+      font-family: monospace;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+    
+    .byte:hover::after {
+      content: attr(data-desc);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #333;
+      color: white;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      white-space: nowrap;
+      z-index: 10;
+      margin-bottom: 5px; /* Add spacing between tooltip and byte */
+    }
+    
+    /* Fix for first row tooltips */
+    #byteDisplay {
+      padding-top: 25px; /* Add space at the top for tooltips */
+    }
+    
+    /* Add tooltip for the upper rows */
+    .byte:nth-child(-n+10):hover::after {
+      bottom: auto;
+      top: -30px;
+    }
+    
+    .vibrate {
+      animation: vibrate 0.2s ease-in-out;
+    }
+    
+    @keyframes vibrate {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-2px); }
+      50% { transform: translateX(2px); }
+      75% { transform: translateX(-2px); }
+      100% { transform: translateX(0); }
+    }
+    
+    .slide-in {
+      animation: slideIn 0.3s ease-in-out;
+    }
+    
+    @keyframes slideIn {
+      0% { transform: translateY(-20px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    
+    .pulse {
+      animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(66, 153, 225, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(66, 153, 225, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(66, 153, 225, 0); }
+    }
+    
+    /* Progress bar animations */
+    .progress-bar {
+      transition: width 0.4s ease-in-out;
+    }
+    
+    /* Toast notification */
+    #toast {
+      visibility: hidden;
+      min-width: 250px;
+      margin-left: -125px;
+      background-color: #333;
+      color: #fff;
+      text-align: center;
+      border-radius: 2px;
+      padding: 16px;
+      position: fixed;
+      z-index: 1;
+      left: 50%;
+      bottom: 30px;
+    }
+
+    #toast.show {
+      visibility: visible;
+      animation: fadein 0.5s, fadeout 0.5s 2.5s;
+    }
+
+    @keyframes fadein {
+      from {bottom: 0; opacity: 0;} 
+      to {bottom: 30px; opacity: 1;}
+    }
+
+    @keyframes fadeout {
+      from {bottom: 30px; opacity: 1;} 
+      to {bottom: 0; opacity: 0;}
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="toast"></div>
+
+  <!-- Navigation -->
+  <nav class="bg-blue-600 text-white p-4 shadow-md">
+    <div class="container mx-auto flex justify-between items-center">
+      <h1 class="text-2xl font-bold">Event Protocol Debugger</h1>
+      <div class="flex space-x-4">
+        <button id="encodeTab" class="px-4 py-2 bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300 active">Encoder</button>
+        <button id="decodeTab" class="px-4 py-2 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300">Decoder</button>
+        <button id="gameTab" class="px-4 py-2 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300">Protocol Game</button>
+        <button id="helpTab" class="px-4 py-2 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300">Help</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="container mx-auto px-4 py-8">
+    <!-- Encoder Tab -->
+    <div id="encoderPanel" class="space-y-6">
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Message Builder</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Header Section -->
+          <div>
+            <h3 class="text-lg font-medium mb-2 text-gray-700">Header</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Sender Address (Hex):</label>
+                <input type="text" id="senderAddr" class="mt-1 p-2 border rounded-md w-full" placeholder="0x01" value="0x01">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Receiver Address (Hex):</label>
+                <input type="text" id="receiverAddr" class="mt-1 p-2 border rounded-md w-full" placeholder="0xFF" value="0xFF">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Group Address (Hex):</label>
+                <input type="text" id="groupAddr" class="mt-1 p-2 border rounded-md w-full" placeholder="0x00" value="0x00">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Flag Byte (Hex):</label>
+                <input type="text" id="flagByte" class="mt-1 p-2 border rounded-md w-full" placeholder="0x80" value="0x80">
+              </div>
+              <div class="col-span-2">
+                <label class="block text-sm font-medium text-gray-600">Message ID:</label>
+                <input type="number" id="msgId" class="mt-1 p-2 border rounded-md w-full" placeholder="1234" value="1234">
+              </div>
+            </div>
+          </div>
+          
+          <!-- Event Section -->
+          <div>
+            <h3 class="text-lg font-medium mb-2 text-gray-700">Event</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Event Name:</label>
+                <input type="text" id="eventName" class="mt-1 p-2 border rounded-md w-full" placeholder="TEMP_UPDATE" value="TEMP_UPDATE">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Event Data:</label>
+                <textarea id="eventData" class="mt-1 p-2 border rounded-md w-full h-24" placeholder='{"temp":25.5}'>{"temp":25.5}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Generate Button -->
+        <div class="mt-6 text-center">
+          <button id="generateBtn" class="px-6 py-3 bg-green-600 text-white rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+            <i class="fas fa-play mr-2"></i>Generate Protocol Message
+          </button>
+        </div>
+      </div>
+      
+      <!-- Visualization Section -->
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Message Visualization</h2>
+        
+        <!-- Protocol Structure Description -->
+        <div class="bg-gray-100 p-4 rounded-md mb-6">
+          <h3 class="text-md font-medium mb-2 text-gray-700">Protocol Structure:</h3>
+          <div class="flex flex-wrap items-center">
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[SOH]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-blue-200 text-blue-800">[Stuffed Header]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[STX]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-green-200 text-green-800">[Stuffed Event Name]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[US]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-yellow-200 text-yellow-800">[Stuffed Event Data]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[EOT]</span>
+          </div>
+        </div>
+        
+        <!-- Byte Visualization -->
+        <div class="border border-gray-300 rounded-md p-4 mb-4 overflow-x-auto">
+          <div id="byteDisplay" class="flex flex-wrap">
+            <div class="text-gray-500 text-center italic w-full">Generate a message to see the byte representation</div>
+          </div>
+        </div>
+        
+        <!-- Copy Button and Size Info -->
+        <div class="flex justify-between items-center">
+          <div id="messageSizeInfo" class="text-sm text-gray-600">
+            Message size: 0 bytes
+          </div>
+          <button id="copyHexBtn" class="px-4 py-2 bg-gray-600 text-white rounded-md shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 hidden">
+            <i class="fas fa-copy mr-2"></i>Copy Hex
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Decoder Tab -->
+    <div id="decoderPanel" class="space-y-6 hidden">
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Message Decoder</h2>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-600">Paste Hex Message:</label>
+            <textarea id="hexInput" class="mt-1 p-2 border rounded-md w-full h-24" placeholder="01 1B 21 1B 22 03 00 1B 24 D2 02 54 45 4D 50 5F 55 50 44 41 54 45 1F 7B 22 74 65 6D 70 22 3A 32 35 2E 35 7D 04"></textarea>
+          </div>
+          
+          <div class="text-center">
+            <button id="decodeBtn" class="px-6 py-3 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+              <i class="fas fa-search mr-2"></i>Decode Message
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Decoder State Machine Visualization -->
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in hidden" id="decoderStateSection">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Decoder State Machine</h2>
+        
+        <div class="mb-6">
+          <h3 class="text-md font-medium mb-2 text-gray-700">Decoding Progress:</h3>
+          <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="decodingProgress" class="bg-blue-600 h-4 rounded-full progress-bar" style="width: 0%"></div>
+          </div>
+          <p id="stateDescription" class="mt-2 text-sm text-gray-600">Waiting to start decoding...</p>
+        </div>
+        
+        <!-- Byte Visualization -->
+        <div class="border border-gray-300 rounded-md p-4 mb-4 overflow-x-auto">
+          <div id="decoderByteDisplay" class="flex flex-wrap">
+            <!-- Bytes will be populated here -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Decoded Message Output -->
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in hidden" id="decodedMessageSection">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Decoded Message</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Header Information -->
+          <div>
+            <h3 class="text-lg font-medium mb-2 text-gray-700">Header</h3>
+            <table class="min-w-full divide-y divide-gray-200">
+              <tbody class="bg-white divide-y divide-gray-200">
+                <tr>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Sender Address</td>
+                  <td id="decodedSender" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Receiver Address</td>
+                  <td id="decodedReceiver" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Group Address</td>
+                  <td id="decodedGroup" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Flag Byte</td>
+                  <td id="decodedFlags" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Message ID</td>
+                  <td id="decodedMsgId" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Event Information -->
+          <div>
+            <h3 class="text-lg font-medium mb-2 text-gray-700">Event</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Event Name:</label>
+                <input type="text" id="decodedEventName" class="mt-1 p-2 bg-gray-100 border rounded-md w-full" readonly>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Event Data:</label>
+                <textarea id="decodedEventData" class="mt-1 p-2 bg-gray-100 border rounded-md w-full h-24" readonly></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Protocol Game Tab -->
+    <div id="gamePanel" class="space-y-6 hidden">
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Protocol Challenge</h2>
+        
+        <div class="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <i class="fas fa-lightbulb text-yellow-400"></i>
+            </div>
+            <div class="ml-3">
+              <p class="text-sm text-yellow-700">
+                Your mission: Decode the received messages and complete the challenges to become a protocol master!
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-medium text-gray-700">Challenge: <span id="challengeTitle">Loading...</span></h3>
+          <div class="text-sm bg-blue-100 text-blue-800 py-1 px-3 rounded-full">
+            Level: <span id="gameLevel">1</span>
+          </div>
+        </div>
+        
+        <div id="challengeDescription" class="text-gray-600 mb-4">
+          Loading challenge...
+        </div>
+        
+        <div class="border border-gray-300 rounded-md p-4 mb-4 bg-gray-50">
+          <h4 class="text-md font-medium mb-2 text-gray-700">Received Message (Hex):</h4>
+          <div id="gameMessageDisplay" class="font-mono text-sm break-all"></div>
+        </div>
+        
+        <div class="space-y-4">
+          <div id="gameAnswerSection">
+            <!-- Will be populated based on challenge type -->
+          </div>
+          
+          <div class="text-center">
+            <button id="submitAnswerBtn" class="px-6 py-3 bg-green-600 text-white rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+              <i class="fas fa-check mr-2"></i>Submit Answer
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Game Progress -->
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Your Progress</h2>
+        
+        <div class="mb-4">
+          <h3 class="text-md font-medium mb-2 text-gray-700">Completed Challenges:</h3>
+          <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="gameProgress" class="bg-green-600 h-4 rounded-full progress-bar" style="width: 0%"></div>
+          </div>
+          <p class="mt-2 text-sm text-gray-600">
+            <span id="completedChallenges">0</span> of <span id="totalChallenges">5</span> challenges completed
+          </p>
+        </div>
+        
+        <div class="border border-gray-300 rounded-md p-4 bg-gray-50">
+          <h4 class="text-md font-medium mb-2 text-gray-700">Achievements:</h4>
+          <ul id="achievementsList" class="list-disc list-inside text-gray-600">
+            <li class="opacity-50">Decode your first message</li>
+            <li class="opacity-50">Master of byte stuffing</li>
+            <li class="opacity-50">Protocol structure expert</li>
+            <li class="opacity-50">Completed all challenges</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Help Tab -->
+    <div id="helpPanel" class="space-y-6 hidden">
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Protocol Reference</h2>
+        
+        <div class="prose max-w-none">
+          <h3>Protocol Structure</h3>
+          <div class="flex flex-wrap items-center mb-4">
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[SOH]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-blue-200 text-blue-800">[Stuffed Header]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[STX]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-green-200 text-green-800">[Stuffed Event Name]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[US]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-yellow-200 text-yellow-800">[Stuffed Event Data]</span>
+            <span class="inline-block px-2 py-1 m-1 rounded bg-purple-200 text-purple-800">[EOT]</span>
+          </div>
+          
+          <h3>Control Characters</h3>
+          <ul>
+            <li><strong>SOH (0x01)</strong>: Start of Header</li>
+            <li><strong>STX (0x02)</strong>: Start of Text</li>
+            <li><strong>US (0x1F)</strong>: Unit Separator</li>
+            <li><strong>EOT (0x04)</strong>: End of Transmission</li>
+            <li><strong>ESC (0x1B)</strong>: Escape Character</li>
+          </ul>
+          
+          <h3>Header Structure (6 bytes)</h3>
+          <ul>
+            <li><strong>Sender Address</strong>: 1 byte</li>
+            <li><strong>Receiver Address</strong>: 1 byte</li>
+            <li><strong>Group Address</strong>: 1 byte</li>
+            <li><strong>Flag Byte</strong>: 1 byte</li>
+            <li><strong>Message ID</strong>: 2 bytes (big-endian)</li>
+          </ul>
+          
+          <h3>Byte Stuffing</h3>
+          <p>To avoid confusion with control characters in the data, byte stuffing is used:</p>
+          <ul>
+            <li>When a control character (SOH, STX, US, EOT, ESC) appears in the data, it's replaced with:</li>
+            <li><code>ESC + (original byte XOR 0x20)</code></li>
+            <li>During decoding, when ESC is encountered, the next byte is XORed with 0x20 to recover the original byte</li>
+          </ul>
+          
+          <h3>Decoder States</h3>
+          <ol>
+            <li>Waiting for SOH</li>
+            <li>Reading Header</li>
+            <li>Waiting for STX</li>
+            <li>Reading Event Name</li>
+            <li>Waiting for US</li>
+            <li>Reading Event Data</li>
+            <li>Waiting for EOT</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div class="bg-white p-6 rounded-lg shadow-md slide-in">
+        <h2 class="text-xl font-semibold mb-4 text-blue-600">Using This Tool</h2>
+        
+        <div class="prose max-w-none">
+          <h3>Encoder Tab</h3>
+          <p>
+            Use the encoder to create protocol messages:
+          </p>
+          <ol>
+            <li>Fill in the header fields (sender, receiver, group, etc.)</li>
+            <li>Enter an event name and event data</li>
+            <li>Click "Generate Protocol Message" to see the byte representation</li>
+            <li>Use "Copy Hex" to copy the message for decoding</li>
+          </ol>
+          
+          <h3>Decoder Tab</h3>
+          <p>
+            Use the decoder to parse protocol messages:
+          </p>
+          <ol>
+            <li>Paste a hex message into the input field</li>
+            <li>Click "Decode Message" to start the decoding process</li>
+            <li>Watch the state machine visualization and see the final decoded message</li>
+          </ol>
+          
+          <h3>Protocol Game</h3>
+          <p>
+            Test your understanding with a series of challenges:
+          </p>
+          <ol>
+            <li>Read the challenge description</li>
+            <li>Analyze the given hex message</li>
+            <li>Submit your answer to proceed to the next level</li>
+            <li>Complete all challenges to become a protocol master!</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Protocol constants
+    const SOH = 0x01; // Start of Header
+    const STX = 0x02; // Start of Text
+    const US = 0x1F;  // Unit Separator
+    const EOT = 0x04; // End of Transmission
+    const ESC = 0x1B; // Escape Character
+    
+    // Control characters that need stuffing
+    const CONTROL_CHARS = [SOH, STX, US, EOT, ESC];
+    
+    // Decoder states
+    const STATE_WAITING_FOR_SOH = 0;
+    const STATE_READING_HEADER = 1;
+    const STATE_WAITING_FOR_STX = 2;
+    const STATE_READING_EVENT_NAME = 3;
+    const STATE_WAITING_FOR_US = 4;
+    const STATE_READING_EVENT_DATA = 5;
+    const STATE_WAITING_FOR_EOT = 6;
+    
+    // State descriptions for UI
+    const STATE_DESCRIPTIONS = [
+      "Waiting for Start of Header (SOH)",
+      "Reading Header Data",
+      "Waiting for Start of Text (STX)",
+      "Reading Event Name",
+      "Waiting for Unit Separator (US)",
+      "Reading Event Data",
+      "Waiting for End of Transmission (EOT)"
+    ];
+    
+    // Nav tab switching
+    document.getElementById('encodeTab').addEventListener('click', () => switchTab('encoderPanel'));
+    document.getElementById('decodeTab').addEventListener('click', () => switchTab('decoderPanel'));
+    document.getElementById('gameTab').addEventListener('click', () => switchTab('gamePanel'));
+    document.getElementById('helpTab').addEventListener('click', () => switchTab('helpPanel'));
+    
+    function switchTab(tabId) {
+      // Hide all tabs
+      ['encoderPanel', 'decoderPanel', 'gamePanel', 'helpPanel'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      
+      // Show selected tab
+      document.getElementById(tabId).classList.remove('hidden');
+      
+      // Update nav buttons
+      document.querySelectorAll('nav button').forEach(btn => {
+        btn.classList.remove('bg-blue-700');
+        btn.classList.add('hover:bg-blue-700');
+      });
+      
+      // Highlight current tab
+      let tabMap = {
+        'encoderPanel': 'encodeTab',
+        'decoderPanel': 'decodeTab',
+        'gamePanel': 'gameTab',
+        'helpPanel': 'helpTab'
+      };
+      
+      let activeTab = document.getElementById(tabMap[tabId]);
+      activeTab.classList.add('bg-blue-700');
+      activeTab.classList.remove('hover:bg-blue-700');
+      
+      // Special handling for game tab
+      if (tabId === 'gamePanel' && !gameInitialized) {
+        initializeGame();
+        gameInitialized = true;
+      }
+    }
+    
+    // Protocol encoding/decoding functions
+    function parseHex(hexStr) {
+      // Handle different formats: "0x01", "01", "01 02 03", "01,02,03"
+      const cleanHex = hexStr.replace(/0x/g, '').replace(/[^0-9A-Fa-f]/g, '');
+      if (cleanHex.length % 2 !== 0) {
+        throw new Error("Invalid hex string length");
+      }
+      
+      const bytes = [];
+      for (let i = 0; i < cleanHex.length; i += 2) {
+        bytes.push(parseInt(cleanHex.substr(i, 2), 16));
+      }
+      return bytes;
+    }
+    
+    function byteToHex(byte) {
+      return byte.toString(16).padStart(2, '0').toUpperCase();
+    }
+    
+    function bytesToHexString(bytes) {
+      return bytes.map(byte => byteToHex(byte)).join(' ');
+    }
+    
+    function stringToBytes(str) {
+      const bytes = [];
+      for (let i = 0; i < str.length; i++) {
+        bytes.push(str.charCodeAt(i));
+      }
+      return bytes;
+    }
+    
+    function bytesToString(bytes) {
+      return String.fromCharCode.apply(null, bytes);
+    }
+    
+    function byteStuff(bytes) {
+      const result = [];
+      
+      for (let i = 0; i < bytes.length; i++) {
+        const byte = bytes[i];
+        
+        if (CONTROL_CHARS.includes(byte)) {
+          // Add escape sequence: ESC + (byte XOR 0x20)
+          result.push(ESC);
+          result.push(byte ^ 0x20);
+        } else {
+          result.push(byte);
+        }
+      }
+      
+      return result;
+    }
+    
+    function byteUnstuff(bytes) {
+      const result = [];
+      let escapedMode = false;
+      
+      for (let i = 0; i < bytes.length; i++) {
+        const byte = bytes[i];
+        
+        if (escapedMode) {
+          // Reverse the XOR operation
+          result.push(byte ^ 0x20);
+          escapedMode = false;
+        } else if (byte === ESC) {
+          escapedMode = true;
+        } else {
+          result.push(byte);
+        }
+      }
+      
+      return result;
+    }
+    
+    function generateProtocolMessage(senderAddr, receiverAddr, groupAddr, flagByte, msgId, eventName, eventData) {
+      let message = [];
+      
+      // Start with SOH
+      message.push(SOH);
+      
+      // Create header
+      const header = [
+        senderAddr,
+        receiverAddr,
+        groupAddr,
+        flagByte,
+        (msgId >> 8) & 0xFF,  // High byte
+        msgId & 0xFF          // Low byte
+      ];
+      
+      // Stuff header and add to message
+      const stuffedHeader = byteStuff(header);
+      message = message.concat(stuffedHeader);
+      
+      // Add STX
+      message.push(STX);
+      
+      // Convert event name to bytes, stuff, and add to message
+      const eventNameBytes = stringToBytes(eventName);
+      const stuffedEventName = byteStuff(eventNameBytes);
+      message = message.concat(stuffedEventName);
+      
+      // Add US
+      message.push(US);
+      
+      // Convert event data to bytes, stuff, and add to message
+      const eventDataBytes = stringToBytes(eventData);
+      const stuffedEventData = byteStuff(eventDataBytes);
+      message = message.concat(stuffedEventData);
+      
+      // End with EOT
+      message.push(EOT);
+      
+      return message;
+    }
+    
+    // Encoder UI logic
+    document.getElementById('generateBtn').addEventListener('click', generateMessage);
+    document.getElementById('copyHexBtn').addEventListener('click', copyHexToClipboard);
+    
+    function generateMessage() {
+      try {
+        // Parse inputs
+        const senderAddr = parseInt(document.getElementById('senderAddr').value, 16);
+        const receiverAddr = parseInt(document.getElementById('receiverAddr').value, 16);
+        const groupAddr = parseInt(document.getElementById('groupAddr').value, 16);
+        const flagByte = parseInt(document.getElementById('flagByte').value, 16);
+        const msgId = parseInt(document.getElementById('msgId').value);
+        const eventName = document.getElementById('eventName').value;
+        const eventData = document.getElementById('eventData').value;
+        
+        // Validate inputs
+        if (isNaN(senderAddr) || isNaN(receiverAddr) || isNaN(groupAddr) || 
+            isNaN(flagByte) || isNaN(msgId)) {
+          showToast("Please enter valid hexadecimal values for addresses and flags");
+          return;
+        }
+        
+        if (eventName.trim() === '') {
+          showToast("Event name cannot be empty");
+          return;
+        }
+        
+        // Generate message
+        const message = generateProtocolMessage(
+          senderAddr, receiverAddr, groupAddr, flagByte, msgId, eventName, eventData
+        );
+        
+        // Update UI
+        displayBytes(message);
+        document.getElementById('messageSizeInfo').textContent = `Message size: ${message.length} bytes`;
+        document.getElementById('copyHexBtn').classList.remove('hidden');
+        
+        // Store the message for copying
+        window.lastGeneratedMessage = message;
+        
+        // Apply animation
+        document.getElementById('byteDisplay').classList.add('slide-in');
+        setTimeout(() => {
+          document.getElementById('byteDisplay').classList.remove('slide-in');
+        }, 300);
+      } catch (error) {
+        showToast(`Error: ${error.message}`);
+      }
+    }
+    
+    function displayBytes(bytes) {
+      const byteDisplay = document.getElementById('byteDisplay');
+      byteDisplay.innerHTML = '';
+      
+      // Define byte type colors
+      const colors = {
+        SOH: { bg: 'bg-purple-200', text: 'text-purple-800', desc: 'Start of Header (SOH)' },
+        STX: { bg: 'bg-purple-200', text: 'text-purple-800', desc: 'Start of Text (STX)' },
+        US: { bg: 'bg-purple-200', text: 'text-purple-800', desc: 'Unit Separator (US)' },
+        EOT: { bg: 'bg-purple-200', text: 'text-purple-800', desc: 'End of Transmission (EOT)' },
+        ESC: { bg: 'bg-red-200', text: 'text-red-800', desc: 'Escape Character (ESC)' },
+        HEADER: { bg: 'bg-blue-200', text: 'text-blue-800', desc: 'Header Data' },
+        EVENT_NAME: { bg: 'bg-green-200', text: 'text-green-800', desc: 'Event Name' },
+        EVENT_DATA: { bg: 'bg-yellow-200', text: 'text-yellow-800', desc: 'Event Data' },
+      };
+      
+      // Track current section and state
+      let currentSection = 'SOH';
+      let escapeNext = false;
+      
+      // Process each byte
+      bytes.forEach((byte, index) => {
+        let byteType = currentSection;
+        
+        // Determine byte type based on its value and position
+        if (byte === SOH) {
+          byteType = 'SOH';
+          currentSection = 'HEADER';
+        } else if (byte === STX) {
+          byteType = 'STX';
+          currentSection = 'EVENT_NAME';
+        } else if (byte === US) {
+          byteType = 'US';
+          currentSection = 'EVENT_DATA';
+        } else if (byte === EOT) {
+          byteType = 'EOT';
+        } else if (byte === ESC) {
+          byteType = 'ESC';
+          escapeNext = true;
+        } else if (escapeNext) {
+          // This is an escaped byte, keep the section type but mark as escaped
+          escapeNext = false;
+        }
+        
+        // Create byte element
+        const byteElement = document.createElement('div');
+        byteElement.className = `byte ${colors[byteType].bg} ${colors[byteType].text}`;
+        byteElement.textContent = byteToHex(byte);
+        byteElement.setAttribute('data-desc', colors[byteType].desc);
+        byteElement.setAttribute('data-index', index);
+        byteElement.setAttribute('data-value', byte);
+        
+        byteDisplay.appendChild(byteElement);
+      });
+    }
+    
+    function copyHexToClipboard() {
+      if (!window.lastGeneratedMessage) return;
+      
+      const hexString = bytesToHexString(window.lastGeneratedMessage);
+      navigator.clipboard.writeText(hexString).then(() => {
+        showToast("Hex copied to clipboard");
+      }).catch(err => {
+        showToast("Failed to copy: " + err);
+      });
+    }
+    
+    // Decoder UI logic
+    document.getElementById('decodeBtn').addEventListener('click', startDecoding);
+    
+    async function startDecoding() {
+      try {
+        const hexInput = document.getElementById('hexInput').value.trim();
+        if (!hexInput) {
+          showToast("Please enter a hex message to decode");
+          return;
+        }
+        
+        // Parse hex string to bytes
+        let bytes;
+        try {
+          bytes = parseHex(hexInput);
+        } catch (e) {
+          showToast("Invalid hex format. Use space or comma separated values.");
+          return;
+        }
+        
+        // Show decoder sections
+        document.getElementById('decoderStateSection').classList.remove('hidden');
+        document.getElementById('decodedMessageSection').classList.remove('hidden');
+        
+        // Display bytes before decoding
+        const decoderByteDisplay = document.getElementById('decoderByteDisplay');
+        decoderByteDisplay.innerHTML = '';
+        
+        bytes.forEach((byte, index) => {
+          const byteElement = document.createElement('div');
+          byteElement.className = `byte bg-gray-200 text-gray-800`;
+          byteElement.textContent = byteToHex(byte);
+          byteElement.setAttribute('data-index', index);
+          decoderByteDisplay.appendChild(byteElement);
+        });
+        
+        // Start the visual decoding process
+        await decodeWithAnimation(bytes);
+      } catch (error) {
+        showToast(`Decoding error: ${error.message}`);
+      }
+    }
+    
+    async function decodeWithAnimation(bytes) {
+      // Reset progress
+      document.getElementById('decodingProgress').style.width = '0%';
+      document.getElementById('stateDescription').textContent = STATE_DESCRIPTIONS[0];
+      
+      // Initialize decoder state
+      let state = STATE_WAITING_FOR_SOH;
+      let escapeMode = false;
+      let currentIndex = 0;
+      
+      // Buffers for storing data
+      let headerBytes = [];
+      let eventNameBytes = [];
+      let eventDataBytes = [];
+      
+      // Get all byte elements
+      const byteElements = document.querySelectorAll('#decoderByteDisplay .byte');
+      
+      // Process each byte with animation
+      for (let i = 0; i < bytes.length; i++) {
+        // Update current index
+        currentIndex = i;
+        
+        // Highlight current byte
+        byteElements.forEach(el => el.classList.remove('pulse'));
+        byteElements[i].classList.add('pulse');
+        
+        // Update progress
+        const progress = ((i + 1) / bytes.length) * 100;
+        document.getElementById('decodingProgress').style.width = `${progress}%`;
+        
+        // Get current byte
+        const byte = bytes[i];
+        
+        // Process byte based on state
+        await processByteInState(byte, state, escapeMode);
+        
+        // Update state based on byte
+        let newState = state;
+        let newEscapeMode = escapeMode;
+        
+        if (!escapeMode) {
+          if (byte === ESC) {
+            newEscapeMode = true;
+          } else {
+            switch (state) {
+              case STATE_WAITING_FOR_SOH:
+                if (byte === SOH) {
+                  newState = STATE_READING_HEADER;
+                  // Clear buffers
+                  headerBytes = [];
+                }
+                break;
+              case STATE_READING_HEADER:
+                if (byte === STX) {
+                  newState = STATE_READING_EVENT_NAME;
+                  // Process header
+                  processHeader(headerBytes);
+                  // Clear buffer
+                  eventNameBytes = [];
+                } else {
+                  headerBytes.push(byte);
+                }
+                break;
+              case STATE_READING_EVENT_NAME:
+                if (byte === US) {
+                  newState = STATE_READING_EVENT_DATA;
+                  // Process event name
+                  processEventName(eventNameBytes);
+                  // Clear buffer
+                  eventDataBytes = [];
+                } else {
+                  eventNameBytes.push(byte);
+                }
+                break;
+              case STATE_READING_EVENT_DATA:
+                if (byte === EOT) {
+                  newState = STATE_WAITING_FOR_SOH;
+                  // Process event data
+                  processEventData(eventDataBytes);
+                  // Show completion
+                  document.getElementById('stateDescription').textContent = "Decoding completed successfully!";
+                } else {
+                  eventDataBytes.push(byte);
+                }
+                break;
+            }
+          }
+        } else {
+          // Handle escaped byte
+          switch (state) {
+            case STATE_READING_HEADER:
+              headerBytes.push(byte ^ 0x20);
+              break;
+            case STATE_READING_EVENT_NAME:
+              eventNameBytes.push(byte ^ 0x20);
+              break;
+            case STATE_READING_EVENT_DATA:
+              eventDataBytes.push(byte ^ 0x20);
+              break;
+          }
+          newEscapeMode = false;
+        }
+        
+        // Apply new state
+        if (state !== newState) {
+          byteElements.forEach(el => {
+            if (parseInt(el.getAttribute('data-index')) <= i) {
+              updateByteClassForState(el, newState);
+            }
+          });
+          
+          document.getElementById('stateDescription').textContent = STATE_DESCRIPTIONS[newState];
+        }
+        
+        state = newState;
+        escapeMode = newEscapeMode;
+        
+        // Add delay for animation
+        await new Promise(r => setTimeout(r, 10));
+      }
+    }
+    
+    async function processByteInState(byte, state, escapeMode) {
+      // Visual update for processing a byte
+      await new Promise(r => setTimeout(r, 50));
+    }
+    
+    function updateByteClassForState(element, state) {
+      // Remove existing state classes
+      element.classList.remove('bg-gray-200', 'bg-purple-200', 'bg-blue-200', 'bg-green-200', 'bg-yellow-200', 'bg-red-200');
+      element.classList.remove('text-gray-800', 'text-purple-800', 'text-blue-800', 'text-green-800', 'text-yellow-800', 'text-red-800');
+      
+      // Add appropriate class based on state
+      switch (state) {
+        case STATE_READING_HEADER:
+          element.classList.add('bg-blue-200', 'text-blue-800');
+          break;
+        case STATE_READING_EVENT_NAME:
+          element.classList.add('bg-green-200', 'text-green-800');
+          break;
+        case STATE_READING_EVENT_DATA:
+          element.classList.add('bg-yellow-200', 'text-yellow-800');
+          break;
+        default:
+          element.classList.add('bg-gray-200', 'text-gray-800');
+      }
+      
+      // Special case for control characters
+      const value = parseInt(element.getAttribute('data-value'));
+      if ([SOH, STX, US, EOT].includes(value)) {
+        element.classList.add('bg-purple-200', 'text-purple-800');
+      } else if (value === ESC) {
+        element.classList.add('bg-red-200', 'text-red-800');
+      }
+    }
+    
+    function processHeader(headerBytes) {
+      // Unstuff header bytes
+      const unstuffedHeader = byteUnstuff(headerBytes);
+      
+      if (unstuffedHeader.length < 6) {
+        showToast("Invalid header: not enough bytes");
+        return;
+      }
+      
+      // Parse header
+      const senderAddr = unstuffedHeader[0];
+      const receiverAddr = unstuffedHeader[1];
+      const groupAddr = unstuffedHeader[2];
+      const flagByte = unstuffedHeader[3];
+      const msgIdHigh = unstuffedHeader[4];
+      const msgIdLow = unstuffedHeader[5];
+      const msgId = (msgIdHigh << 8) | msgIdLow;
+      
+      // Update UI
+      document.getElementById('decodedSender').textContent = `0x${byteToHex(senderAddr)}`;
+      document.getElementById('decodedReceiver').textContent = `0x${byteToHex(receiverAddr)}`;
+      document.getElementById('decodedGroup').textContent = `0x${byteToHex(groupAddr)}`;
+      document.getElementById('decodedFlags').textContent = `0x${byteToHex(flagByte)}`;
+      document.getElementById('decodedMsgId').textContent = `${msgId} (0x${msgId.toString(16).padStart(4, '0').toUpperCase()})`;
+    }
+    
+    function processEventName(eventNameBytes) {
+      const unstuffedEventName = byteUnstuff(eventNameBytes);
+      const eventName = bytesToString(unstuffedEventName);
+      
+      document.getElementById('decodedEventName').value = eventName;
+    }
+    
+    function processEventData(eventDataBytes) {
+      const unstuffedEventData = byteUnstuff(eventDataBytes);
+      const eventData = bytesToString(unstuffedEventData);
+      
+      document.getElementById('decodedEventData').value = eventData;
+    }
+    
+    // Game logic
+    let gameInitialized = false;
+    let currentLevel = 1;
+    let totalLevels = 5;
+    let completedLevels = 0;
+    let achievements = [false, false, false, false];
+    
+    const gameChallenges = [
+      {
+        title: "Basic Decoder",
+        description: "Decode this message and identify the event name.",
+        message: "01010203000104021465736B746F705F737461747573001F7B22737461747573223A224F4E4C494E45222C2274696D657374616D70223A313730393531323030307D04",
+        answerType: "text",
+        correctAnswer: "desktop_status",
+        hint: "Look for the text between STX (02) and US (1F)"
+      },
+      {
+        title: "Escaped Characters",
+        description: "This message contains byte stuffing. What's the actual receiver address?",
+        message: "01011B2103001B0402540045005300540001F7B7D04",
+        answerType: "hex",
+        correctAnswer: "01",
+        hint: "Remember that ESC (1B) + byte is actually byte XOR 0x20"
+      },
+      {
+        title: "Message Structure",
+        description: "Identify the message ID (decimal) in this protocol message.",
+        message: "01010203007B0002544553541F7B22646174615F706F696E74223A31323334567D04",
+        answerType: "number",
+        correctAnswer: "123",
+        hint: "The message ID is 2 bytes in the header, with high byte first"
+      },
+      {
+        title: "Complex Payload",
+        description: "This message has a JSON payload. What temperature is reported?",
+        message: "010A0B0C0D270F02544550505F5345444E534F521F7B2274656D70223A32322E352C2268756D6964697479223A34352C227374617475223A226F6B227D04",
+        answerType: "text",
+        correctAnswer: "22.5",
+        hint: "Decode the event data and look for the 'temp' field"
+      },
+      {
+        title: "Protocol Master",
+        description: "Final challenge! Create a protocol message with sender=0x42, receiver=0xFF, group=0x01, flags=0x80, msgId=555, eventName='FINAL_TEST', and eventData='{\"result\":\"PASS\"}'",
+        answerType: "build",
+        correctAnswer: "014201FF018002332B0246494E414C5F544553541F7B22726573756C74223A2250415353227D04",
+        hint: "Use the Encoder tab to build this message"
+      }
+    ];
+    
+    function initializeGame() {
+      loadChallenge(currentLevel);
+      updateGameProgress();
+    }
+    
+    function loadChallenge(level) {
+      const challenge = gameChallenges[level - 1];
+      
+      // Update UI
+      document.getElementById('challengeTitle').textContent = challenge.title;
+      document.getElementById('challengeDescription').textContent = challenge.description;
+      document.getElementById('gameMessageDisplay').textContent = challenge.message;
+      document.getElementById('gameLevel').textContent = level;
+      
+      // Create appropriate answer input
+      const answerSection = document.getElementById('gameAnswerSection');
+      answerSection.innerHTML = '';
+      
+      let inputElement;
+      
+      switch (challenge.answerType) {
+        case 'text':
+        case 'hex':
+        case 'number':
+          const label = document.createElement('label');
+          label.className = 'block text-sm font-medium text-gray-600 mb-2';
+          label.textContent = 'Your Answer:';
+          
+          inputElement = document.createElement('input');
+          inputElement.type = challenge.answerType === 'number' ? 'number' : 'text';
+          inputElement.id = 'gameAnswer';
+          inputElement.className = 'p-2 border rounded-md w-full';
+          inputElement.placeholder = `Enter your answer here...`;
+          
+          answerSection.appendChild(label);
+          answerSection.appendChild(inputElement);
+          break;
+          
+        case 'build':
+          const instruction = document.createElement('p');
+          instruction.className = 'text-sm text-gray-600 mb-4';
+          instruction.textContent = 'Go to the Encoder tab, build the message as specified, then paste the hex here:';
+          
+          inputElement = document.createElement('textarea');
+          inputElement.id = 'gameAnswer';
+          inputElement.className = 'p-2 border rounded-md w-full h-24';
+          inputElement.placeholder = 'Paste the generated hex message here...';
+          
+          answerSection.appendChild(instruction);
+          answerSection.appendChild(inputElement);
+          break;
+      }
+      
+      // Add hint button
+      const hintButton = document.createElement('button');
+      hintButton.className = 'mt-2 text-sm text-blue-600 hover:text-blue-800';
+      hintButton.textContent = 'Need a hint?';
+      hintButton.onclick = () => showToast(challenge.hint);
+      
+      answerSection.appendChild(hintButton);
+    }
+    
+    document.getElementById('submitAnswerBtn').addEventListener('click', checkAnswer);
+    
+    function checkAnswer() {
+      const userAnswer = document.getElementById('gameAnswer').value.trim();
+      const challenge = gameChallenges[currentLevel - 1];
+      
+      let isCorrect = false;
+      
+      // Check answer based on type
+      switch (challenge.answerType) {
+        case 'hex':
+          // Remove spaces, 0x prefix, etc. for both answers
+          const cleanUserHex = userAnswer.replace(/0x/g, '').replace(/\s/g, '').toLowerCase();
+          const cleanCorrectHex = challenge.correctAnswer.replace(/0x/g, '').replace(/\s/g, '').toLowerCase();
+          isCorrect = cleanUserHex === cleanCorrectHex;
+          break;
+          
+        case 'number':
+          isCorrect = parseInt(userAnswer) === parseInt(challenge.correctAnswer);
+          break;
+          
+        case 'build':
+          // Parse both as bytes and compare
+          try {
+            const userBytes = parseHex(userAnswer);
+            const correctBytes = parseHex(challenge.correctAnswer);
+            
+            // Allow for some flexibility in byte stuffing
+            isCorrect = compareMessages(userBytes, correctBytes);
+          } catch (e) {
+            showToast("Invalid hex format");
+            return;
+          }
+          break;
+          
+        default: // text
+          isCorrect = userAnswer.toLowerCase() === challenge.correctAnswer.toLowerCase();
+      }
+      
+      if (isCorrect) {
+        // Track completion
+        if (currentLevel > completedLevels) {
+          completedLevels = currentLevel;
+          unlockAchievement(currentLevel - 1);
+        }
+        
+        // Show success message
+        showToast("Correct! Moving to next challenge...");
+        
+        // Move to next level or show completion
+        if (currentLevel < totalLevels) {
+          currentLevel++;
+          loadChallenge(currentLevel);
+        } else {
+          // Complete all challenges achievement
+          unlockAchievement(3);
+          showToast("Congratulations! You've completed all challenges!");
+        }
+        
+        // Update progress
+        updateGameProgress();
+      } else {
+        showToast("That's not correct. Try again!");
+        
+        // Add vibration effect
+        const gameAnswerElement = document.getElementById('gameAnswer');
+        gameAnswerElement.classList.add('vibrate');
+        setTimeout(() => {
+          gameAnswerElement.classList.remove('vibrate');
+        }, 500);
+      }
+    }
+    
+    function compareMessages(userBytes, correctBytes) {
+      // Decode both messages and compare the components
+      try {
+        const userDecoded = decodeMessage(userBytes);
+        const correctDecoded = decodeMessage(correctBytes);
+        
+        // Compare relevant fields
+        return (
+          userDecoded.senderAddr === correctDecoded.senderAddr &&
+          userDecoded.receiverAddr === correctDecoded.receiverAddr &&
+          userDecoded.groupAddr === correctDecoded.groupAddr &&
+          userDecoded.flagByte === correctDecoded.flagByte &&
+          userDecoded.msgId === correctDecoded.msgId &&
+          userDecoded.eventName === correctDecoded.eventName &&
+          userDecoded.eventData === correctDecoded.eventData
+        );
+      } catch (e) {
+        return false;
+      }
+    }
+    
+    function decodeMessage(bytes) {
+      // Simple decoder without animations
+      let state = STATE_WAITING_FOR_SOH;
+      let escapeMode = false;
+      
+      // Buffers for storing data
+      let headerBytes = [];
+      let eventNameBytes = [];
+      let eventDataBytes = [];
+      
+      // Process each byte
+      for (let i = 0; i < bytes.length; i++) {
+        const byte = bytes[i];
+        
+        if (!escapeMode) {
+          if (byte === ESC) {
+            escapeMode = true;
+          } else {
+            switch (state) {
+              case STATE_WAITING_FOR_SOH:
+                if (byte === SOH) {
+                  state = STATE_READING_HEADER;
+                  headerBytes = [];
+                }
+                break;
+              case STATE_READING_HEADER:
+                if (byte === STX) {
+                  state = STATE_READING_EVENT_NAME;
+                  eventNameBytes = [];
+                } else {
+                  headerBytes.push(byte);
+                }
+                break;
+              case STATE_READING_EVENT_NAME:
+                if (byte === US) {
+                  state = STATE_READING_EVENT_DATA;
+                  eventDataBytes = [];
+                } else {
+                  eventNameBytes.push(byte);
+                }
+                break;
+              case STATE_READING_EVENT_DATA:
+                if (byte === EOT) {
+                  state = STATE_WAITING_FOR_SOH;
+                } else {
+                  eventDataBytes.push(byte);
+                }
+                break;
+            }
+          }
+        } else {
+          // Handle escaped byte
+          switch (state) {
+            case STATE_READING_HEADER:
+              headerBytes.push(byte ^ 0x20);
+              break;
+            case STATE_READING_EVENT_NAME:
+              eventNameBytes.push(byte ^ 0x20);
+              break;
+            case STATE_READING_EVENT_DATA:
+              eventDataBytes.push(byte ^ 0x20);
+              break;
+          }
+          escapeMode = false;
+        }
+      }
+      
+      // Unstuff and parse
+      const unstuffedHeader = byteUnstuff(headerBytes);
+      const unstuffedEventName = byteUnstuff(eventNameBytes);
+      const unstuffedEventData = byteUnstuff(eventDataBytes);
+      
+      if (unstuffedHeader.length < 6) {
+        throw new Error("Invalid header");
+      }
+      
+      // Parse header
+      const senderAddr = unstuffedHeader[0];
+      const receiverAddr = unstuffedHeader[1];
+      const groupAddr = unstuffedHeader[2];
+      const flagByte = unstuffedHeader[3];
+      const msgIdHigh = unstuffedHeader[4];
+      const msgIdLow = unstuffedHeader[5];
+      const msgId = (msgIdHigh << 8) | msgIdLow;
+      
+      // Convert to strings
+      const eventName = bytesToString(unstuffedEventName);
+      const eventData = bytesToString(unstuffedEventData);
+      
+      return {
+        senderAddr,
+        receiverAddr,
+        groupAddr,
+        flagByte,
+        msgId,
+        eventName,
+        eventData
+      };
+    }
+    
+    function updateGameProgress() {
+      const progressPercent = (completedLevels / totalLevels) * 100;
+      document.getElementById('gameProgress').style.width = `${progressPercent}%`;
+      document.getElementById('completedChallenges').textContent = completedLevels;
+      document.getElementById('totalChallenges').textContent = totalLevels;
+    }
+    
+    function unlockAchievement(index) {
+      if (index >= 0 && index < achievements.length && !achievements[index]) {
+        achievements[index] = true;
+        
+        // Update UI
+        const achievementItems = document.querySelectorAll('#achievementsList li');
+        achievementItems[index].classList.remove('opacity-50');
+        achievementItems[index].innerHTML += ' <i class="fas fa-check-circle text-green-500"></i>';
+        
+        // Show notification
+        const achievementNames = [
+          "Decode your first message",
+          "Master of byte stuffing",
+          "Protocol structure expert",
+          "Completed all challenges"
+        ];
+        showToast(`Achievement unlocked: ${achievementNames[index]}!`);
+      }
+    }
+    
+    // Utility functions
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'show';
+      setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+    }
+    
+    // Initialize
+    window.onload = function() {
+      // Start with encoder tab
+      switchTab('encoderPanel');
+    };
+  </script>
+</body>
+</html>

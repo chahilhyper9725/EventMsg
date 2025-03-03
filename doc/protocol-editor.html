@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event-Based Protocol Editor & Visualizer</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2ecc71;
+            --accent-color: #e74c3c;
+            --dark-color: #34495e;
+            --light-color: #ecf0f1;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: var(--dark-color);
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .card-title {
+            color: var(--dark-color);
+            margin-top: 0;
+            border-bottom: 2px solid var(--light-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark-color);
+        }
+        
+        input[type="text"], 
+        input[type="number"], 
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+            font-size: 16px;
+            transition: border 0.3s;
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        textarea:focus {
+            border-color: var(--primary-color);
+            outline: none;
+        }
+        
+        .flag-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .flag-item {
+            display: flex;
+            align-items: center;
+            background-color: var(--light-color);
+            padding: 8px 12px;
+            border-radius: var(--border-radius);
+        }
+        
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+        }
+        
+        .button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        
+        .button:hover {
+            background-color: #2980b9;
+        }
+        
+        .button-secondary {
+            background-color: var(--secondary-color);
+        }
+        
+        .button-secondary:hover {
+            background-color: #27ae60;
+        }
+        
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 25px;
+        }
+        
+        .visualizer {
+            margin-top: 30px;
+        }
+        
+        .protocol-visual {
+            display: flex;
+            overflow-x: auto;
+            margin-top: 20px;
+            padding-bottom: 15px;
+        }
+        
+        .protocol-segment {
+            min-width: 100px;
+            text-align: center;
+            padding: 15px 10px;
+            margin-right: 5px;
+            border-radius: var(--border-radius);
+            color: white;
+            position: relative;
+        }
+        
+        .protocol-segment:after {
+            content: '';
+            position: absolute;
+            right: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 10px solid #555;
+            transform: translateY(-50%) rotate(-90deg);
+        }
+        
+        .protocol-segment:last-child:after {
+            display: none;
+        }
+        
+        .protocol-segment-label {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        
+        .protocol-segment-value {
+            font-family: monospace;
+            font-size: 12px;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 5px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+        
+        .soh { background-color: #3498db; }
+        .header-seg { background-color: #9b59b6; }
+        .stx { background-color: #2ecc71; }
+        .event-name { background-color: #f1c40f; color: #333; }
+        .us { background-color: #e67e22; }
+        .event-data { background-color: #e74c3c; }
+        .eot { background-color: #34495e; }
+        
+        .byte-output {
+            font-family: monospace;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: var(--border-radius);
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        .byte-output pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .helper-text {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        .row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .col-6 {
+            flex: 1;
+        }
+        
+        @media (max-width: 768px) {
+            .row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Event-Based Protocol Editor & Visualizer</h1>
+            <p>Design, visualize, and generate event-based protocol messages</p>
+        </div>
+        
+        <div class="card">
+            <h2 class="card-title">Protocol Header</h2>
+            
+            <div class="row">
+                <div class="col-6">
+                    <div class="form-group">
+                        <label for="sender-address">Sender Address</label>
+                        <input type="text" id="sender-address" placeholder="Enter sender address (e.g., 0x01)">
+                    </div>
+                </div>
+                
+                <div class="col-6">
+                    <div class="form-group">
+                        <label for="receiver-address">Receiver Address</label>
+                        <input type="text" id="receiver-address" placeholder="Enter receiver address (e.g., 0xFF)">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-6">
+                    <div class="form-group">
+                        <label for="group-address">Group Address</label>
+                        <input type="text" id="group-address" placeholder="Enter group address (e.g., 0x00)">
+                    </div>
+                </div>
+                
+                <div class="col-6">
+                    <div class="form-group">
+                        <label for="msg-id">Message ID</label>
+                        <input type="number" id="msg-id" min="0" max="65535" placeholder="Enter message ID (0-65535)">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Flag Byte</label>
+                <div class="flag-container">
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag0">
+                            <label for="flag0">Flag 0</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag1">
+                            <label for="flag1">Flag 1</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag2">
+                            <label for="flag2">Flag 2</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag3">
+                            <label for="flag3">Flag 3</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag4">
+                            <label for="flag4">Flag 4</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag5">
+                            <label for="flag5">Flag 5</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag6">
+                            <label for="flag6">Flag 6</label>
+                        </div>
+                    </div>
+                    
+                    <div class="flag-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="flag7">
+                            <label for="flag7">Flag 7</label>
+                        </div>
+                    </div>
+                </div>
+                <div id="flag-value" class="helper-text">Flag Byte Value: 0x00</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2 class="card-title">Event Data</h2>
+            
+            <div class="form-group">
+                <label for="event-name">Event Name</label>
+                <input type="text" id="event-name" placeholder="Enter event name (e.g., TEMPERATURE_UPDATE)">
+            </div>
+            
+            <div class="form-group">
+                <label for="event-data">Event Data</label>
+                <textarea id="event-data" rows="5" placeholder="Enter event data as JSON or text"></textarea>
+                <div class="helper-text">For JSON data, ensure it's valid JSON format.</div>
+            </div>
+        </div>
+        
+        <div class="button-container">
+            <button id="generate-btn" class="button">Generate Protocol Message</button>
+            <button id="clear-btn" class="button button-secondary">Clear All Fields</button>
+        </div>
+        
+        <div class="card">
+            <h2 class="card-title">Protocol Decoder</h2>
+            <div class="form-group">
+                <label for="hex-input">Paste Hex String to Decode</label>
+                <textarea id="hex-input" rows="4" placeholder="Enter hex bytes (e.g., 0x01 0x02 0x03 or 01 02 03)"></textarea>
+                <div class="helper-text">Enter space or comma-separated hex values, with or without '0x' prefix</div>
+            </div>
+            <button id="decode-btn" class="button">Decode Protocol Message</button>
+            
+            <div id="decode-results" class="visualizer" style="margin-top: 20px; display: none;">
+                <h3>Decoded Results</h3>
+                <div class="form-group">
+                    <label>Sender Address:</label>
+                    <div id="decode-sender" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+                <div class="form-group">
+                    <label>Receiver Address:</label>
+                    <div id="decode-receiver" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+                <div class="form-group">
+                    <label>Group Address:</label>
+                    <div id="decode-group" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+                <div class="form-group">
+                    <label>Flag Byte:</label>
+                    <div id="decode-flag" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+                <div class="form-group">
+                    <label>Message ID:</label>
+                    <div id="decode-msgid" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+                <div class="form-group">
+                    <label>Event Name:</label>
+                    <div id="decode-eventname" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+                <div class="form-group">
+                    <label>Event Data:</label>
+                    <div id="decode-eventdata" class="byte-output" style="padding: 8px; margin-top: 5px;">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="visualizer card">
+            <h2 class="card-title">Protocol Visualization</h2>
+            
+            <div class="protocol-visual" id="protocol-visual">
+                <div class="protocol-segment soh">
+                    <div class="protocol-segment-label">SOH</div>
+                    <div class="protocol-segment-value">0x01</div>
+                </div>
+                
+                <div class="protocol-segment header-seg">
+                    <div class="protocol-segment-label">Header</div>
+                    <div class="protocol-segment-value" id="header-value">...</div>
+                </div>
+                
+                <div class="protocol-segment stx">
+                    <div class="protocol-segment-label">STX</div>
+                    <div class="protocol-segment-value">0x02</div>
+                </div>
+                
+                <div class="protocol-segment event-name">
+                    <div class="protocol-segment-label">Event Name</div>
+                    <div class="protocol-segment-value" id="eventname-value">...</div>
+                </div>
+                
+                <div class="protocol-segment us">
+                    <div class="protocol-segment-label">US</div>
+                    <div class="protocol-segment-value">0x1F</div>
+                </div>
+                
+                <div class="protocol-segment event-data">
+                    <div class="protocol-segment-label">Event Data</div>
+                    <div class="protocol-segment-value" id="eventdata-value">...</div>
+                </div>
+                
+                <div class="protocol-segment eot">
+                    <div class="protocol-segment-label">EOT</div>
+                    <div class="protocol-segment-value">0x04</div>
+                </div>
+            </div>
+            
+            <div class="byte-output">
+                <h3>Byte Representation</h3>
+                <pre id="byte-output">Generate a message to see the byte representation...</pre>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // ASCII Control Characters
+        const SOH = 0x01; // Start of Header
+        const STX = 0x02; // Start of Text
+        const US = 0x1F;  // Unit Separator
+        const EOT = 0x04; // End of Transmission
+        const ESC = 0x1B; // Escape Character
+        
+        // Get DOM elements
+        const generateBtn = document.getElementById('generate-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const decodeBtn = document.getElementById('decode-btn');
+        const headerValue = document.getElementById('header-value');
+        const eventnameValue = document.getElementById('eventname-value');
+        const eventdataValue = document.getElementById('eventdata-value');
+        const byteOutput = document.getElementById('byte-output');
+        const flagValue = document.getElementById('flag-value');
+        const decodeResults = document.getElementById('decode-results');
+        
+        // Event listeners for form inputs
+        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', updateFlagByte);
+        });
+        
+        // Generate button click handler
+        generateBtn.addEventListener('click', generateProtocolMessage);
+        
+        // Clear button click handler
+        clearBtn.addEventListener('click', clearAllFields);
+        
+        // Decode button click handler
+        decodeBtn.addEventListener('click', decodeProtocolMessage);
+        
+        // Function to update the flag byte display
+        function updateFlagByte() {
+            let flagByte = 0;
+            
+            for (let i = 0; i < 8; i++) {
+                const checkbox = document.getElementById(`flag${i}`);
+                if (checkbox && checkbox.checked) {
+                    flagByte |= (1 << i);
+                }
+            }
+            
+            flagValue.textContent = `Flag Byte Value: 0x${flagByte.toString(16).padStart(2, '0').toUpperCase()}`;
+        }
+        
+        // Function to generate the protocol message
+        function generateProtocolMessage() {
+            // Get header values
+            const senderAddress = parseHexOrDecimal(document.getElementById('sender-address').value) || 0;
+            const receiverAddress = parseHexOrDecimal(document.getElementById('receiver-address').value) || 0;
+            const groupAddress = parseHexOrDecimal(document.getElementById('group-address').value) || 0;
+            const msgId = parseInt(document.getElementById('msg-id').value) || 0;
+            
+            // Calculate flag byte
+            let flagByte = 0;
+            for (let i = 0; i < 8; i++) {
+                const checkbox = document.getElementById(`flag${i}`);
+                if (checkbox && checkbox.checked) {
+                    flagByte |= (1 << i);
+                }
+            }
+            
+            // Get event data
+            const eventName = document.getElementById('event-name').value || 'EVENT';
+            const eventData = document.getElementById('event-data').value || '';
+            
+            // Create header (sender, receiver, group, flag, msgid)
+            const header = [
+                senderAddress & 0xFF,
+                receiverAddress & 0xFF,
+                groupAddress & 0xFF,
+                flagByte & 0xFF,
+                (msgId >> 8) & 0xFF,  // High byte
+                msgId & 0xFF           // Low byte
+            ];
+            
+            // Convert event name and data to byte arrays
+            const eventNameBytes = stringToBytes(eventName);
+            const eventDataBytes = stringToBytes(eventData);
+            
+            // Create the message with control characters
+            let message = [];
+            message.push(SOH); // Always starts with SOH
+            
+            // Add header bytes (with byte stuffing)
+            const stuffedHeader = byteStuffSection(header);
+            message = message.concat(stuffedHeader);
+            
+            message.push(STX); // Start of text
+            
+            // Add event name bytes (with byte stuffing)
+            const stuffedEventName = byteStuffSection(eventNameBytes);
+            message = message.concat(stuffedEventName);
+            
+            message.push(US); // Unit separator
+            
+            // Add event data bytes (with byte stuffing)
+            const stuffedEventData = byteStuffSection(eventDataBytes);
+            message = message.concat(stuffedEventData);
+            
+            message.push(EOT); // Always ends with EOT
+            
+            // Update UI
+            updateVisualization(header, eventName, eventData, message);
+        }
+        
+        // Function to convert a string to a byte array
+        function stringToBytes(str) {
+            const bytes = [];
+            for (let i = 0; i < str.length; i++) {
+                bytes.push(str.charCodeAt(i) & 0xFF);
+            }
+            return bytes;
+        }
+        
+        // Function to convert bytes to a string
+        function bytesToString(bytes) {
+            return bytes.map(byte => String.fromCharCode(byte)).join('');
+        }
+        
+        // Function to apply byte stuffing to a section (not including control chars)
+        function byteStuffSection(bytes) {
+            const result = [];
+            const controlChars = [SOH, STX, US, EOT, ESC];
+            
+            for (const byte of bytes) {
+                if (controlChars.includes(byte) || byte === ESC) {
+                    result.push(ESC); // Add escape character
+                    result.push(byte ^ 0x20); // XOR with 0x20 to obfuscate
+                } else {
+                    result.push(byte);
+                }
+            }
+            
+            return result;
+        }
+
+        
+        // Function to update the visualization
+        function updateVisualization(header, eventName, eventData, message) {
+            // Update header value display
+            const headerHex = header.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+            headerValue.textContent = headerHex;
+            
+            // Update event name display
+            eventnameValue.textContent = eventName;
+            
+            // Update event data display
+            eventdataValue.textContent = eventData.substring(0, 20) + (eventData.length > 20 ? '...' : '');
+            
+            // Format the byte output with line breaks for readability and colorize control characters
+            let formattedOutput = '';
+            let lineCount = 0;
+            
+            message.forEach((byte, index) => {
+                let byteStr = '0x' + byte.toString(16).padStart(2, '0').toUpperCase();
+                
+                // Add color spans for control characters
+                if (byte === SOH) {
+                    byteStr = `<span style="color: #3498db; font-weight: bold;">${byteStr}</span>`;
+                } else if (byte === STX) {
+                    byteStr = `<span style="color: #2ecc71; font-weight: bold;">${byteStr}</span>`;
+                } else if (byte === US) {
+                    byteStr = `<span style="color: #e67e22; font-weight: bold;">${byteStr}</span>`;
+                } else if (byte === EOT) {
+                    byteStr = `<span style="color: #34495e; font-weight: bold;">${byteStr}</span>`;
+                } else if (byte === ESC) {
+                    byteStr = `<span style="color: #e74c3c; font-weight: bold;">${byteStr}</span>`;
+                }
+                
+                formattedOutput += byteStr;
+                lineCount++;
+                
+                if (index < message.length - 1) {
+                    if (lineCount >= 8) {
+                        formattedOutput += ',<br>';
+                        lineCount = 0;
+                    } else {
+                        formattedOutput += ', ';
+                    }
+                }
+            });
+            
+            byteOutput.innerHTML = formattedOutput;
+        }
+        
+        // Function to decode a protocol message from hex
+        function decodeProtocolMessage() {
+            // Get the hex input
+            const hexInput = document.getElementById('hex-input').value;
+            if (!hexInput.trim()) {
+                alert('Please enter a hex string to decode');
+                return;
+            }
+            
+            // Parse the hex string into bytes
+            const bytes = parseHexString(hexInput);
+            if (!bytes.length) {
+                alert('Invalid hex input format');
+                return;
+            }
+            
+            // Verify start and end bytes
+            if (bytes[0] !== SOH || bytes[bytes.length - 1] !== EOT) {
+                alert('Invalid protocol message: Must start with 0x01 (SOH) and end with 0x04 (EOT)');
+                return;
+            }
+            
+            // Process the message
+            try {
+                // Find marker positions
+                let stxPos = -1;
+                let usPos = -1;
+                
+                // We need to scan the message considering escape characters
+                let i = 1; // Start after SOH
+                while (i < bytes.length - 1) { // End before EOT
+                    if (bytes[i] === ESC) {
+                        // Skip the escape character and the next byte
+                        i += 2;
+                    } else if (bytes[i] === STX && stxPos === -1) {
+                        stxPos = i;
+                        i++;
+                    } else if (bytes[i] === US && stxPos !== -1 && usPos === -1) {
+                        usPos = i;
+                        i++;
+                    } else {
+                        i++;
+                    }
+                }
+                
+                if (stxPos === -1 || usPos === -1) {
+                    throw new Error('Missing STX or US markers in the message');
+                }
+                
+                // Extract and unstuff header section (between SOH and STX)
+                const headerBytes = unstuffBytes(bytes.slice(1, stxPos));
+                if (headerBytes.length < 6) {
+                    throw new Error('Header section is too short');
+                }
+                
+                const sender = headerBytes[0];
+                const receiver = headerBytes[1];
+                const group = headerBytes[2];
+                const flagByte = headerBytes[3];
+                const msgIdHigh = headerBytes[4];
+                const msgIdLow = headerBytes[5];
+                const msgId = (msgIdHigh << 8) | msgIdLow;
+                
+                // Extract and unstuff event name (between STX and US)
+                const eventNameBytes = unstuffBytes(bytes.slice(stxPos + 1, usPos));
+                const eventName = bytesToString(eventNameBytes);
+                
+                // Extract and unstuff event data (between US and EOT)
+                const eventDataBytes = unstuffBytes(bytes.slice(usPos + 1, bytes.length - 1));
+                const eventData = bytesToString(eventDataBytes);
+                
+                // Update the UI with decoded values
+                document.getElementById('decode-sender').textContent = `0x${sender.toString(16).padStart(2, '0').toUpperCase()} (${sender})`;
+                document.getElementById('decode-receiver').textContent = `0x${receiver.toString(16).padStart(2, '0').toUpperCase()} (${receiver})`;
+                document.getElementById('decode-group').textContent = `0x${group.toString(16).padStart(2, '0').toUpperCase()} (${group})`;
+                
+                // Format flag byte with binary representation
+                let flagBits = flagByte.toString(2).padStart(8, '0');
+                document.getElementById('decode-flag').textContent = `0x${flagByte.toString(16).padStart(2, '0').toUpperCase()} (Binary: ${flagBits})`;
+                
+                document.getElementById('decode-msgid').textContent = `0x${msgId.toString(16).padStart(4, '0').toUpperCase()} (${msgId})`;
+                document.getElementById('decode-eventname').textContent = eventName;
+                document.getElementById('decode-eventdata').textContent = eventData;
+                
+                // Show the results section
+                decodeResults.style.display = 'block';
+                
+                // Optional: Also populate the form fields to allow editing
+                document.getElementById('sender-address').value = sender.toString(16);
+                document.getElementById('receiver-address').value = receiver.toString(16);
+                document.getElementById('group-address').value = group.toString(16);
+                document.getElementById('msg-id').value = msgId;
+                
+                // Set flag checkboxes
+                for (let i = 0; i < 8; i++) {
+                    const checkbox = document.getElementById(`flag${i}`);
+                    if (checkbox) {
+                        checkbox.checked = ((flagByte >> i) & 1) === 1;
+                    }
+                }
+                updateFlagByte();
+                
+                document.getElementById('event-name').value = eventName;
+                document.getElementById('event-data').value = eventData;
+                
+            } catch (error) {
+                alert('Error decoding message: ' + error.message);
+            }
+        }
+        
+        // Function to unstuff bytes (remove escape characters and de-XOR)
+        function unstuffBytes(stuffedBytes) {
+            const result = [];
+            let i = 0;
+            
+            while (i < stuffedBytes.length) {
+                if (stuffedBytes[i] === ESC && i + 1 < stuffedBytes.length) {
+                    // Skip the escape character and de-XOR the next byte
+                    result.push(stuffedBytes[i + 1] ^ 0x20);
+                    i += 2;
+                } else {
+                    result.push(stuffedBytes[i]);
+                    i++;
+                }
+            }
+            
+            return result;
+        }
+        
+        // Function to parse a hex string into bytes
+        function parseHexString(hexString) {
+            // Remove 0x prefixes, commas, and whitespace
+            hexString = hexString.replace(/0x/gi, '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+            
+            // Split into individual hex values
+            const hexValues = hexString.split(' ');
+            
+            // Convert to byte array
+            const bytes = [];
+            for (const hex of hexValues) {
+                if (hex.trim() === '') continue;
+                
+                const byte = parseInt(hex, 16);
+                if (isNaN(byte) || byte < 0 || byte > 255) {
+                    console.error('Invalid hex value:', hex);
+                    continue;
+                }
+                
+                bytes.push(byte);
+            }
+            
+            return bytes;
+        }
+        
+        // Function to clear all fields
+        function clearAllFields() {
+            document.getElementById('sender-address').value = '';
+            document.getElementById('receiver-address').value = '';
+            document.getElementById('group-address').value = '';
+            document.getElementById('msg-id').value = '';
+            document.getElementById('event-name').value = '';
+            document.getElementById('event-data').value = '';
+            document.getElementById('hex-input').value = '';
+            
+            // Uncheck all flag checkboxes
+            for (let i = 0; i < 8; i++) {
+                const checkbox = document.getElementById(`flag${i}`);
+                if (checkbox) {
+                    checkbox.checked = false;
+                }
+            }
+            
+            updateFlagByte();
+            
+            // Reset visualization
+            headerValue.textContent = '...';
+            eventnameValue.textContent = '...';
+            eventdataValue.textContent = '...';
+            byteOutput.textContent = 'Generate a message to see the byte representation...';
+            
+            // Hide decode results
+            decodeResults.style.display = 'none';
+        }
+        
+        // Helper function to parse hex or decimal values
+        function parseHexOrDecimal(value) {
+            if (!value) return 0;
+            
+            value = value.trim();
+            
+            // Check if it's a hex value (starts with 0x)
+            if (value.toLowerCase().startsWith('0x')) {
+                return parseInt(value.substring(2), 16);
+            }
+            
+            // Check if it's a hex value without 0x prefix
+            if (/^[0-9a-f]+$/i.test(value)) {
+                return parseInt(value, 16);
+            }
+            
+            // Otherwise, treat as decimal
+            return parseInt(value, 10);
+        }
+        
+        // Initialize flag byte display
+        updateFlagByte();
+    </script>
+</body>
+</html>
