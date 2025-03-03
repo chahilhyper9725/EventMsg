@@ -1,151 +1,223 @@
-# EventMsg Protocol Documentation
+# EventMsg Protocol Specification
 
-## Overview
+## Message Format
 
-EventMsg is a lightweight event-based messaging protocol designed for embedded systems, particularly ESP32 and Arduino platforms. It provides reliable communication with features like byte stuffing, message framing, and addressing.
-
-## Protocol Structure
-
-### Message Format
+The EventMsg protocol uses the following frame format:
 
 ```
-[SOH][Stuffed Header][STX][Stuffed Event Name][US][Stuffed Event Data][EOT]
+[SOH][Header][STX][Event Name][US][Event Data][EOT]
 ```
 
 ### Control Characters
 
-| Character | Hex Value | Description |
-|-----------|-----------|-------------|
-| SOH | 0x01 | Start of Header |
-| STX | 0x02 | Start of Text |
-| US  | 0x1F | Unit Separator |
-| EOT | 0x04 | End of Transmission |
-| ESC | 0x1B | Escape Character |
+- SOH (0x01): Start of Header - Marks beginning of message
+- STX (0x02): Start of Text - Marks beginning of event name
+- US (0x1F): Unit Separator - Separates event name from data
+- EOT (0x04): End of Transmission - Marks end of message
+- ESC (0x1B): Escape Character - Used for byte stuffing
 
-### Header Structure (6 bytes)
+### Header Format
+
+6-byte header structure:
 ```
-[Sender Address (1B)][Receiver Address (1B)][Group Address (1B)][Flags (1B)][Message ID (2B)]
-```
-
-## Implementation Details
-
-### 1. Message Generation
-
-```cpp
-Message Structure:
-1. Start with SOH
-2. Add byte-stuffed header
-3. Add STX marker
-4. Add byte-stuffed event name
-5. Add US separator
-6. Add byte-stuffed event data
-7. End with EOT
+[Sender Address][Receiver Address][Group Address][Flags][Message ID MSB][Message ID LSB]
 ```
 
-### 2. Byte Stuffing Algorithm
+- **Sender Address** (1 byte): Source device address
+- **Receiver Address** (1 byte): Destination device address (0xFF for broadcast)
+- **Group Address** (1 byte): Group identifier (0x00 for no group)
+- **Flags** (1 byte): Message flags
+- **Message ID** (2 bytes): Sequential message identifier (Big-endian)
 
-Byte stuffing is used to escape control characters within the message:
+## Event Dispatcher System
 
-```cpp
-For each byte in data:
-    if byte is a control character (SOH, STX, US, EOT, ESC):
-        output ESC
-        output (byte XOR 0x20)  // Obfuscation
-    else:
-        output byte as-is
+The EventMsg library implements a device-based dispatcher system that routes messages based on receiver and group addresses.
+
+### Dispatcher Registration
+
+Each dispatcher is registered with:
+- Device name (string identifier)
+- Receiver ID (address to listen for)
+- Group ID (group to listen for)
+- Callback function receiving:
+  - Event name
+  - Event data
+  - Header buffer
+  - Sender address
+  - Receiver address
+
+### Message Routing
+
+Messages are routed to dispatchers based on:
+1. Exact receiver ID match
+2. Broadcast address (0xFF) match
+3. Group ID match
+4. No group (0x00) match
+
+Multiple dispatchers may receive the same message if their filters match.
+
+## Byte Stuffing
+
+To ensure reliable transmission when control characters appear in the message content, byte stuffing is used:
+
+### Control Character Table
+```
+Control Char | Hex  | Stuffed Sequence
+-------------|------|----------------
+SOH          | 0x01 | ESC 0x21
+STX          | 0x02 | ESC 0x22
+US           | 0x1F | ESC 0x3F
+EOT          | 0x04 | ESC 0x24
+ESC          | 0x1B | ESC 0x3B
 ```
 
-### 3. State Machine Decoder
+### Stuffing Algorithm
 
-The decoder implements a state machine with the following states:
+1. **When sending:**
+   ```cpp
+   if (byte is control character) {
+       output(ESC);
+       output(byte XOR 0x20);
+   } else {
+       output(byte);
+   }
+   ```
 
-1. WAITING_FOR_SOH
-2. READING_HEADER
-3. WAITING_FOR_STX
-4. READING_EVENT_NAME
-5. WAITING_FOR_US
-6. READING_EVENT_DATA
-7. WAITING_FOR_EOT
+2. **When receiving:**
+   ```cpp
+   if (byte == ESC) {
+       next_byte = input();
+       actual_byte = next_byte XOR 0x20;
+   } else {
+       actual_byte = byte;
+   }
+   ```
+
+### Stuffing Example
+```
+Original:  SOH A B EOT
+Hex:       01 41 42 04
+Stuffed:   1B 21 41 42 1B 24
+           ^^ ^^ -- -- ^^ ^^
+           |  |        |  +-- 0x04 XOR 0x20
+           |  |        +-- ESC
+           |  +-- 0x01 XOR 0x20
+           +-- ESC
+```
+
+## State Machine
+
+The protocol parser implements a state machine with the following states:
 
 ```mermaid
 stateDiagram-v2
     [*] --> WAITING_FOR_SOH
     WAITING_FOR_SOH --> READING_HEADER: SOH
-    READING_HEADER --> READING_EVENT_NAME: STX
+    READING_HEADER --> WAITING_FOR_STX: 6 bytes read
+    WAITING_FOR_STX --> READING_EVENT_NAME: STX
     READING_EVENT_NAME --> READING_EVENT_DATA: US
     READING_EVENT_DATA --> WAITING_FOR_SOH: EOT
+    
+    note left of READING_HEADER
+        Collect 6 byte header:
+        - Sender
+        - Receiver
+        - Group
+        - Flags
+        - Message ID (2 bytes)
+    end note
 ```
 
-## Best Practices
+### State Details
 
-### Buffer Management
-- Implement proper buffer size limits
-- Check for buffer overflows
-- Clear buffers between messages
+1. **WAITING_FOR_SOH**
+   - Initial state
+   - Wait for Start of Header
+   - Reset all buffers
 
-### Error Handling
-- Implement timeout mechanisms
-- Validate message contents
-- Handle incomplete messages
-- Verify message integrity
+2. **READING_HEADER**
+   - Collect 6 bytes
+   - Apply byte unstuffing
+   - Validate header format
 
-### Transport Layer
-- Protocol is transport-agnostic
-- Can work over UART, TCP, BLE, etc.
-- Implement proper error checking for your transport
+3. **WAITING_FOR_STX**
+   - Expect Start of Text
+   - Error if not received
 
-### Thread Safety
-- Ensure thread-safe operation
-- Handle concurrent access properly
-- Use appropriate synchronization mechanisms
+4. **READING_EVENT_NAME**
+   - Collect event name bytes
+   - Apply byte unstuffing
+   - Check length limits
 
-## Implementation Examples
+5. **READING_EVENT_DATA**
+   - Collect event data bytes
+   - Apply byte unstuffing
+   - Check length limits
+   - Process EOT
 
-### Basic Send Example
+## Example Message Flow
 
-```cpp
-// Send a temperature update event
-float temp = 25.5;
-char data[32];
-snprintf(data, sizeof(data), "%.1f", temp);
-eventMsg.send("TEMP_UPDATE", data, 0xFF, 0x00, 0x00);
+```
+Device A (0x01) sending temperature to Device B (0x02):
+
+[SOH][01 02 00 00 00 01][STX]TEMP_UPDATE[US]25.5[EOT]
+ ^    ^ ^  ^  ^  ^  ^    ^      ^        ^    ^   ^
+ |    | |  |  |  |  |    |      |        |    |   End
+ |    | |  |  |  |  |    |      |        |    Data
+ |    | |  |  |  |  |    |      |        Separator
+ |    | |  |  |  |  |    |      Event Name
+ |    | |  |  |  |  |    Start of Text
+ |    | |  |  |  |  Message ID LSB
+ |    | |  |  |  Message ID MSB
+ |    | |  |  Flags
+ |    | |  Group
+ |    | Receiver
+ |    Sender
+ Start
 ```
 
-### Basic Receive Example
+## Error Handling
 
-```cpp
-// Register event handler
-eventMsg.onEvent([](const char* name, const char* data) {
-    if (strcmp(name, "TEMP_UPDATE") == 0) {
-        float temp = atof(data);
-        // Handle temperature update
-    }
-});
-```
+1. **Buffer Overflow**
+   - Event name > 32 bytes: Error
+   - Event data > 2048 bytes: Error
+   - Header incomplete: Error
 
-## Testing
+2. **Protocol Errors**
+   - Missing STX after header: Error
+   - Missing US between name/data: Error
+   - Missing EOT: Error
+   - Invalid sequence: Error
 
-### Test Vectors
-1. Basic message with no byte stuffing
-2. Message requiring byte stuffing
-3. Empty event data
-4. Maximum length messages
-5. Invalid message format handling
+3. **Recovery**
+   - Reset state machine
+   - Clear buffers
+   - Resume at next SOH
 
-## Performance Considerations
+## Implementation Considerations
 
-1. Memory Usage
-   - Fixed buffer sizes
-   - Static memory allocation
-   - Stack usage monitoring
+1. **Buffer Management**
+   - Pre-allocate buffers for header, name, data
+   - Clear buffers on reset
+   - Use buffer position tracking
 
-2. Processing Overhead
-   - Byte stuffing impact
-   - State machine efficiency
-   - Buffer copying optimization
+2. **Message Processing**
+   - Process one byte at a time
+   - Maintain state between calls
+   - Handle escape sequences efficiently
 
-## Additional Resources
+3. **Dispatcher System**
+   - Efficient dispatcher lookup
+   - Support multiple matching dispatchers
+   - Full message context in callbacks
 
-- [Library Repository](https://github.com/yourusername/EventMsg)
-- [API Documentation](../README.md)
-- [Example Projects](../examples/)
+4. **Message Assembly**
+   - Validate all components
+   - Apply byte stuffing correctly
+   - Check buffer limits
+   - Maintain message ID sequence
+
+5. **Thread Safety**
+   - Process messages in order
+   - Protect shared resources
+   - Handle concurrent dispatchers

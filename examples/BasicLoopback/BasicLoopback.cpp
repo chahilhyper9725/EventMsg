@@ -1,45 +1,64 @@
 #include <Arduino.h>
-#include <EventMsg.h>
+#include "EventMsg.h"
 
 EventMsg eventMsg;
 
-// Loopback write callback that processes received data immediately
-bool loopbackWrite(uint8_t* data, size_t len) {
-    // Process the data we just "sent" by feeding it back into process()
-    eventMsg.process(data, len);
-    return true;
+// Handler for loopback messages
+void loopbackHandler(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
+    Serial.println("\n=== Loopback Message ===");
+    Serial.printf("Event: %s\n", event);
+    Serial.printf("Data: %s\n", data);
+    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
+    
+    // Echo message back with a different event name
+    char responseData[64];
+    snprintf(responseData, sizeof(responseData), "Echo: %s", data);
+    eventMsg.send("ECHO_RESPONSE", responseData, sender, 0x00, 0x00);
 }
 
-void handleEvent(const char* name, const char* data) {
-    // Print received data that was looped back
-    Serial.printf("Looped back event '%s' with data: %s\n", name, data);
+// Handler for echo responses
+void echoHandler(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
+    Serial.println("\n=== Echo Response ===");
+    Serial.printf("Event: %s\n", event);
+    Serial.printf("Data: %s\n", data);
+    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
 }
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial) delay(10);
+    delay(1000);
     
-    // Initialize EventMsg with loopback write callback
-    eventMsg.init(loopbackWrite);
+    Serial.println("EventMsg Basic Loopback Demo with Dispatchers");
+    Serial.println("Send messages in format: t<eventname> <data>");
+    Serial.println("Example: tTEST Hello\n");
     
-    // Set device address and group
+    // Initialize with Serial write callback
+    eventMsg.init([](uint8_t* data, size_t len) {
+        return Serial.write(data, len) == len;
+    });
+    
+    // Set local address for this device
     eventMsg.setAddr(0x01);
-    eventMsg.setGroup(0x00);
     
-    // Register event handler
-    eventMsg.onEvent(handleEvent);
-    
-    Serial.println("EventMsg Internal Loopback Test");
-    Serial.println("Sending test messages...\n");
-    
-    // Send a few test messages
-    eventMsg.send("TEST1", "Hello World", 0xFF, 0x00, 0x00);
-    eventMsg.send("TEST2", "12345", 0xFF, 0x00, 0x00);
-    eventMsg.send("TEST3", "!@#$%", 0xFF, 0x00, 0x00);
-    
-    Serial.println("\nTest complete!");
+    // Register dispatchers for different message types
+    eventMsg.registerDispatcher("loopback", 0xFF, 0x00, loopbackHandler);  // Handle all incoming messages
+    eventMsg.registerDispatcher("echo", 0x01, 0x00, echoHandler);         // Handle responses to our device
 }
 
 void loop() {
-    // Nothing to do here as loopback is handled in the write callback
+    // Process any incoming serial data
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == 't') {  // Command format: t<eventname> <data>
+            String eventname = Serial.readStringUntil(' ');
+            String eventdata = Serial.readStringUntil('\n');
+            
+            // Send as broadcast to demonstrate loopback
+            eventMsg.send(eventname.c_str(), eventdata.c_str(), 0xFF, 0x00, 0x00);
+        }
+        else {
+            // Process as regular message data
+            eventMsg.process((uint8_t*)&c, 1);
+        }
+    }
 }

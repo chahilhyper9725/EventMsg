@@ -15,10 +15,33 @@ void EventMsg::setGroup(uint8_t addr) {
     groupAddr = addr;
 }
 
-void EventMsg::onEvent(EventCallback cb, uint8_t recvId, uint8_t grpId) {
-    eventCallback = cb;
-    receiverId = recvId;
-    groupId = grpId;
+bool EventMsg::registerDispatcher(const char* deviceName, uint8_t recvId, uint8_t grpId, EventDispatcherCallback cb) {
+    // Check if dispatcher already exists
+    for (const auto& dispatcher : dispatchers) {
+        if (dispatcher.deviceName == deviceName) {
+            return false; // Dispatcher already exists
+        }
+    }
+
+    // Create new dispatcher
+    EventDispatcher dispatcher{
+        std::string(deviceName),
+        recvId,
+        grpId,
+        cb
+    };
+    dispatchers.push_back(dispatcher);
+    return true;
+}
+
+bool EventMsg::unregisterDispatcher(const char* deviceName) {
+    for (auto it = dispatchers.begin(); it != dispatchers.end(); ++it) {
+        if (it->deviceName == deviceName) {
+            dispatchers.erase(it);
+            return true;
+        }
+    }
+    return false;
 }
 
 size_t EventMsg::ByteStuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen) {
@@ -226,12 +249,20 @@ bool EventMsg::processNextByte(uint8_t byte) {
                 uint8_t group = headerBuffer[2];
                 DEBUG_PRINT("EOT Received: receiver=0x%02X, group=0x%02X", receiver, group);
                 
-                if ((receiver == localAddr || receiver == 0xFF) &&
-                    (group == groupAddr || group == 0)) {
-                    DEBUG_PRINT("Message accepted (matches our address/group)");
-                    // Call event handler with properly preserved name and data
-                    if (eventCallback) {
-                        eventCallback((const char*)eventNameBuffer, (const char*)eventDataBuffer);
+                // Dispatch to all matching handlers
+                for (const auto& dispatcher : dispatchers) {
+                    if ((receiver == dispatcher.receiverId || receiver == 0xFF) &&
+                        (group == dispatcher.groupId || group == 0)) {
+                        DEBUG_PRINT("Message accepted for dispatcher %s", dispatcher.deviceName.c_str());
+                        if (dispatcher.callback) {
+                            dispatcher.callback(
+                                (const char*)eventNameBuffer,
+                                (const char*)eventDataBuffer,
+                                headerBuffer,
+                                headerBuffer[0], // sender
+                                receiver
+                            );
+                        }
                     }
                 }
                 

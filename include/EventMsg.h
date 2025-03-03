@@ -3,6 +3,12 @@
 
 #include <Arduino.h>
 #include <functional>
+#include <vector>
+
+#include <string>
+
+using namespace std;
+
 
 // Protocol Control Characters
 #define SOH 0x01  // Start of Header
@@ -26,8 +32,16 @@
 // Function type for data transmission
 using WriteCallback = std::function<bool(uint8_t*, size_t)>;
 
-// Function type for event handling
-using EventCallback = std::function<void(const char*, const char*)>;
+// Function type for event handling with full context
+using EventDispatcherCallback = std::function<void(const char*, const char*, uint8_t*, uint8_t, uint8_t)>;
+
+// Structure to hold dispatcher information
+struct EventDispatcher {
+    std::string deviceName;
+    uint8_t receiverId;
+    uint8_t groupId;
+    EventDispatcherCallback callback;
+};
 
 class EventMsg {
 private:
@@ -47,9 +61,7 @@ private:
     uint8_t groupAddr;
     uint16_t msgIdCounter;
     WriteCallback writeCallback;
-    EventCallback eventCallback;
-    uint8_t receiverId;
-    uint8_t groupId;
+    std::vector<EventDispatcher> dispatchers;
 
     // State machine buffers and tracking
     ProcessState state;
@@ -69,8 +81,7 @@ private:
     size_t StringToBytes(const char* str, uint8_t* output, size_t outputMaxLen);
 
 public:
-    EventMsg() : localAddr(0), groupAddr(0), msgIdCounter(0), 
-                receiverId(0xFF), groupId(0) {}
+    EventMsg() : localAddr(0), groupAddr(0), msgIdCounter(0) {}
 
     // Core functions
     bool init(WriteCallback cb);
@@ -82,7 +93,8 @@ public:
     bool process(uint8_t* data, size_t len);
     
     // Event registration
-    void onEvent(EventCallback cb, uint8_t receiverId = 0xFF, uint8_t groupId = 0);
+    bool registerDispatcher(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb);
+    bool unregisterDispatcher(const char* deviceName);
 };
 
 #endif // EVENT_MSG_H
