@@ -80,7 +80,7 @@ void loop() {
 
 ### ESP32 BLE Example
 
-See [examples/ESP32_BLE](examples/ESP32_BLE) for a complete BLE communication example.
+See [examples/BLE_ESP32](examples/BLE_ESP32) for a complete BLE communication example.
 
 ## Protocol Details
 
