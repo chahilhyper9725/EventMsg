@@ -3,6 +3,7 @@
 
 bool EventMsg::init(WriteCallback cb) {
     writeCallback = cb;
+    resetState();
     return true;
 }
 
@@ -135,10 +136,15 @@ size_t EventMsg::send(const char* name, const char* data, uint8_t recvAddr, uint
 
 void EventMsg::resetState() {
     state = ProcessState::WAITING_FOR_SOH;
+    currentBuffer = nullptr;
+    currentMaxLength = 0;
     bufferPos = 0;
-    expectedLength = 0;
     escapedMode = false;
-    memset(assemblyBuffer, 0, sizeof(assemblyBuffer));
+    
+    // Clear all buffers
+    memset(headerBuffer, 0, sizeof(headerBuffer));
+    memset(eventNameBuffer, 0, sizeof(eventNameBuffer));
+    memset(eventDataBuffer, 0, sizeof(eventDataBuffer));
 }
 
 bool EventMsg::processNextByte(uint8_t byte) {
@@ -150,39 +156,43 @@ bool EventMsg::processNextByte(uint8_t byte) {
         escapedMode = true;
         return true;
     }
-
+    
+    // DEBUG_PRINT("%02X ", byte);
+    
     // Process based on current state
     switch (state) {
         case ProcessState::WAITING_FOR_SOH:
             if (byte == SOH) {
                 state = ProcessState::READING_HEADER;
-                expectedLength = MAX_HEADER_SIZE;
+                currentBuffer = headerBuffer;
+                currentMaxLength = MAX_HEADER_SIZE;
                 bufferPos = 0;
             }
             break;
 
         case ProcessState::READING_HEADER:
-            assemblyBuffer[bufferPos++] = byte;
-            if (bufferPos == expectedLength) {
+            currentBuffer[bufferPos++] = byte;
+            if (bufferPos == currentMaxLength) {
                 // Extract header info
-                uint8_t sender = assemblyBuffer[0];
-                uint8_t receiver = assemblyBuffer[1];
-                uint8_t group = assemblyBuffer[2];
-                uint8_t flags = assemblyBuffer[3];
-                uint16_t msgId = (assemblyBuffer[4] << 8) | assemblyBuffer[5];
+                uint8_t sender = headerBuffer[0];
+                uint8_t receiver = headerBuffer[1];
+                uint8_t group = headerBuffer[2];
+                uint8_t flags = headerBuffer[3];
+                uint16_t msgId = (headerBuffer[4] << 8) | headerBuffer[5];
 
                 DEBUG_PRINT("Header: sender=0x%02X, receiver=0x%02X, group=0x%02X, flags=0x%02X, msgId=%u",
-                            sender, receiver, group, flags, msgId);
+                           sender, receiver, group, flags, msgId);
 
                 state = ProcessState::WAITING_FOR_STX;
-                bufferPos = 0;
             }
             break;
 
         case ProcessState::WAITING_FOR_STX:
             if (byte == STX) {
                 state = ProcessState::READING_EVENT_NAME;
-                expectedLength = MAX_EVENT_NAME_SIZE;
+                currentBuffer = eventNameBuffer;
+                currentMaxLength = MAX_EVENT_NAME_SIZE;
+                bufferPos = 0;
             } else {
                 return false; // Invalid sequence
             }
@@ -191,47 +201,47 @@ bool EventMsg::processNextByte(uint8_t byte) {
         case ProcessState::READING_EVENT_NAME:
             if (byte == US) {
                 // Null terminate event name
-                assemblyBuffer[bufferPos] = '\0';
-                DEBUG_PRINT("Event Name: %s (%d bytes)", assemblyBuffer, bufferPos);
+                currentBuffer[bufferPos] = '\0';
+                DEBUG_PRINT("Event Name: %s (%d bytes)", currentBuffer, bufferPos);
                 
                 state = ProcessState::READING_EVENT_DATA;
+                currentBuffer = eventDataBuffer;
+                currentMaxLength = MAX_EVENT_DATA_SIZE;
                 bufferPos = 0;
             } else {
-                if (bufferPos >= expectedLength) {
+                if (bufferPos >= currentMaxLength) {
                     return false; // Name too long
                 }
-                assemblyBuffer[bufferPos++] = byte;
+                currentBuffer[bufferPos++] = byte;
             }
             break;
 
         case ProcessState::READING_EVENT_DATA:
             if (byte == EOT) {
                 // Message complete, process it
-                assemblyBuffer[bufferPos] = '\0';
+                currentBuffer[bufferPos] = '\0';
                 
-                // Check if message is for us
-                uint8_t receiver = assemblyBuffer[1];
-                uint8_t group = assemblyBuffer[2];
+                // Use preserved header info
+                uint8_t receiver = headerBuffer[1];
+                uint8_t group = headerBuffer[2];
+                DEBUG_PRINT("EOT Received: receiver=0x%02X, group=0x%02X", receiver, group);
                 
                 if ((receiver == localAddr || receiver == 0xFF) &&
                     (group == groupAddr || group == 0)) {
                     DEBUG_PRINT("Message accepted (matches our address/group)");
-                    // Call event handler with name and data
+                    // Call event handler with properly preserved name and data
                     if (eventCallback) {
-                        const char* eventName = (const char*)assemblyBuffer;
-                        const char* eventData = (const char*)&assemblyBuffer[strlen(eventName) + 1];
-                        eventCallback(eventName, eventData);
+                        eventCallback((const char*)eventNameBuffer, (const char*)eventDataBuffer);
                     }
                 }
                 
                 // Reset for next message
                 resetState();
-                state = ProcessState::WAITING_FOR_SOH;
             } else {
-                if (bufferPos >= MAX_EVENT_DATA_SIZE) {
+                if (bufferPos >= currentMaxLength) {
                     return false; // Data too long
                 }
-                assemblyBuffer[bufferPos++] = byte;
+                currentBuffer[bufferPos++] = byte;
             }
             break;
     }

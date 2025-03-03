@@ -53,9 +53,12 @@ private:
 
     // State machine buffers and tracking
     ProcessState state;
-    uint8_t assemblyBuffer[MAX_EVENT_DATA_SIZE];
+    uint8_t headerBuffer[MAX_HEADER_SIZE];
+    uint8_t eventNameBuffer[MAX_EVENT_NAME_SIZE];
+    uint8_t eventDataBuffer[MAX_EVENT_DATA_SIZE];
+    uint8_t* currentBuffer;      // Points to active buffer
+    size_t currentMaxLength;     // Max length for active buffer
     size_t bufferPos;
-    size_t expectedLength;
     bool escapedMode;
 
     // Internal methods
