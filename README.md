@@ -90,7 +90,17 @@ The EventMsg protocol uses a simple message format with proper framing:
 [SOH][Header][STX][Event Name][US][Event Data][EOT]
 ```
 
-For detailed protocol documentation, see [docs/PROTOCOL.md](docs/PROTOCOL.md).
+For detailed protocol documentation including message format, control characters, byte stuffing algorithm, and state machine implementation, see [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
+For detailed implementation documentation including core components, memory management, thread safety, and performance optimizations, see [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+
+## Development Tools
+
+The library comes with web-based tools to help with development and debugging:
+
+- **Protocol Debugger** ([docs/webtools/protocol-debugger.html](docs/webtools/protocol-debugger.html)) - Interactively explore the protocol structure and decode messages
+- **Protocol Editor** ([docs/webtools/protocol-editor.html](docs/webtools/protocol-editor.html)) - Visual tool to create and edit protocol messages
+- **BLE Tester** ([docs/webtools/ble-tester.html](docs/webtools/ble-tester.html)) - Test BLE communication using the EventMsg protocol
 
 ## API Reference
 
