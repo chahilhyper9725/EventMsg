@@ -31,6 +31,18 @@ using EventCallback = std::function<void(const char*, const char*)>;
 
 class EventMsg {
 private:
+    // Message assembly state machine
+    enum class ProcessState {
+        WAITING_FOR_SOH,
+        READING_HEADER,
+        WAITING_FOR_STX,
+        READING_EVENT_NAME,
+        WAITING_FOR_US,
+        READING_EVENT_DATA,
+        WAITING_FOR_EOT
+    };
+
+    // Configuration
     uint8_t localAddr;
     uint8_t groupAddr;
     uint16_t msgIdCounter;
@@ -39,7 +51,16 @@ private:
     uint8_t receiverId;
     uint8_t groupId;
 
+    // State machine buffers and tracking
+    ProcessState state;
+    uint8_t assemblyBuffer[MAX_EVENT_DATA_SIZE];
+    size_t bufferPos;
+    size_t expectedLength;
+    bool escapedMode;
+
     // Internal methods
+    bool processNextByte(uint8_t byte);
+    void resetState();
     size_t ByteStuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen);
     size_t ByteUnstuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen);
     size_t StringToBytes(const char* str, uint8_t* output, size_t outputMaxLen);
