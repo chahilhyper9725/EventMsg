@@ -82,25 +82,35 @@
     <h3>Log</h3>
     <div id="log"></div>
 
+    <script src="event-msg.js"></script>
+    <script src="ble-handler.js"></script>
     <script>
-        let device = null;
-        let server = null;
-        let txCharacteristic = null;
-        let rxCharacteristic = null;
+        let bleHandler = new BleHandler();
         let testRunning = false;
         let startTime = 0;
         let totalBytes = 0;
         let messageCount = 0;
 
-        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const CHARACTERISTIC_UUID_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-        const CHARACTERISTIC_UUID_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-
-        function log(message) {
+        function log(message, isDebug = false) {
             const logDiv = document.getElementById('log');
-            logDiv.innerHTML += message + '<br>';
+            const prefix = isDebug ? '<span style="color: #666">[DEBUG]</span> ' : '';
+            logDiv.innerHTML += prefix + message + '<br>';
             logDiv.scrollTop = logDiv.scrollHeight;
         }
+
+        // Override console.log for debugging
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        console.log = function() {
+            originalConsoleLog.apply(console, arguments);
+            const message = Array.from(arguments).join(' ');
+            log(message, true);
+        };
+        console.error = function() {
+            originalConsoleError.apply(console, arguments);
+            const message = Array.from(arguments).join(' ');
+            log('<span style="color: red">' + message + '</span>', true);
+        };
 
         function updateStats() {
             const elapsedTime = (Date.now() - startTime) / 1000;
@@ -111,102 +121,17 @@
             document.getElementById('throughput').textContent = throughput.toFixed(2);
         }
 
-        // Control characters
-        const SOH = 0x01;
-        const STX = 0x02;
-        const US = 0x1F;
-        const EOT = 0x04;
-        const ESC = 0x1B;
-
-        function byteStuff(input) {
-            const controlChars = [SOH, STX, US, EOT, ESC];
-            const output = [];
-
-            for (const byte of input) {
-                if (controlChars.includes(byte)) {
-                    output.push(ESC);
-                    output.push(byte ^ 0x20);
-                } else {
-                    output.push(byte);
-                }
-            }
-
-            return new Uint8Array(output);
-        }
-
-        function createHeader(sender, receiver, group, flags, msgId) {
-            const header = new Uint8Array([
-                sender,
-                receiver,
-                group,
-                flags,
-                (msgId >> 8) & 0xFF,
-                msgId & 0xFF
-            ]);
-            return byteStuff(header);
-        }
-
-        async function sendEventMessage(name, data, receiver, group, flags) {
-            // Create header with byte stuffing
-            const msgId = messageCount;
-            const stuffedHeader = createHeader(
-                0x00,
-                parseInt(receiver, 16),
-                parseInt(group, 16),
-                parseInt(flags, 16),
-                msgId
-            );
-
-            // Convert and stuff event name & data
-            const encoder = new TextEncoder();
-            const nameBytes = byteStuff(encoder.encode(name));
-            const dataBytes = byteStuff(encoder.encode(data));
-
-            // Build complete message
-            const message = new Uint8Array([
-                SOH,
-                ...stuffedHeader,
-                STX,
-                ...nameBytes,
-                US,
-                ...dataBytes,
-                EOT
-            ]);
-
-            if (rxCharacteristic) {
-                await writeToBLE(message);
-                totalBytes += message.length;
-                messageCount++;
-                updateStats();
-            }
-        }
-
-        async function writeToBLE(data) {
-            if (rxCharacteristic) {
-                let chunkSize = 500;
-                let offset = 0;
-
-                while (offset < data.length) {
-                    let chunk = data.slice(offset, offset + chunkSize);
-                    offset += chunkSize;
-                    // await rxCharacteristic.writeValue(chunk);
-                    await rxCharacteristic.writeValueWithoutResponse(chunk);
-                }
-            } else {
-                log('Error: No RX characteristic found or not connected');
-            }
-        }
-
         async function runThroughputTest() {
             if (!testRunning) return;
 
             try {
                 const testData = "X".repeat(1500);
-                await sendEventMessage("TEST", testData, "FF", "00", "80");
+                await bleHandler.sendMessage("TEST", testData, 0xFF, 0x00, 0x80);
+                totalBytes += testData.length;
+                messageCount++;
+                updateStats();
                 
-                // Schedule next message only if test is still running
                 if (testRunning) {
-                    // Use requestAnimationFrame for better timing
                     requestAnimationFrame(runThroughputTest);
                 }
             } catch (error) {
@@ -222,8 +147,6 @@
             totalBytes = 0;
             messageCount = 0;
             testRunning = true;
-            
-            // Start the sequential message sending
             runThroughputTest();
         }
 
@@ -235,112 +158,14 @@
 
         async function connect() {
             try {
-                log('Requesting Bluetooth Device...');
-                device = await navigator.bluetooth.requestDevice({
-                    filters: [{
-                        services: [SERVICE_UUID]
-                    }]
-                });
+                log('Connecting to BLE device...');
+                const success = await bleHandler.connect();
+                if (!success) throw new Error('Connection failed');
 
-                log('Connecting to device...');
-                server = await device.gatt.connect();
-
-                log('Getting Service...');
-                const service = await server.getPrimaryService(SERVICE_UUID);
-
-                log('Getting Characteristics...');
-                rxCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_RX);
-                txCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_TX);
-
-                await txCharacteristic.startNotifications();
-                txCharacteristic.addEventListener('characteristicvaluechanged', event => {
-                    const value = new Uint8Array(event.target.value.buffer);
-                    const decoder = new TextDecoder();
-
-                    try {
-                        let pos = 0;
-
-                        if (value[pos++] !== 0x01) {
-                            log('Error: Invalid message format (missing SOH)');
-                            return;
-                        }
-
-                        let headerEnd = pos;
-                        while (headerEnd < value.length && value[headerEnd] !== 0x02) headerEnd++;
-                        if (headerEnd >= value.length) {
-                            log('Error: Invalid message format (missing STX)');
-                            return;
-                        }
-
-                        function byteUnstuff(data, start, end) {
-                            const output = [];
-                            let escapedMode = false;
-
-                            for (let i = start; i < end; i++) {
-                                if (escapedMode) {
-                                    output.push(data[i] ^ 0x20);
-                                    escapedMode = false;
-                                } else if (data[i] === ESC) {
-                                    escapedMode = true;
-                                } else {
-                                    output.push(data[i]);
-                                }
-                            }
-                            return new Uint8Array(output);
-                        }
-
-                        const headerBytes = byteUnstuff(value, pos, headerEnd);
-                        if (headerBytes.length !== 6) {
-                            log('Error: Invalid header length after unstuffing');
-                            return;
-                        }
-
-                        const header = {
-                            sender: headerBytes[0].toString(16).padStart(2, '0').toUpperCase(),
-                            receiver: headerBytes[1].toString(16).padStart(2, '0').toUpperCase(),
-                            group: headerBytes[2].toString(16).padStart(2, '0').toUpperCase(),
-                            flags: headerBytes[3].toString(16).padStart(2, '0').toUpperCase(),
-                            msgId: (headerBytes[4] << 8) | headerBytes[5]
-                        };
-
-                        pos = headerEnd + 1;
-
-                        let nameEnd = pos;
-                        while (nameEnd < value.length && value[nameEnd] !== 0x1F) nameEnd++;
-                        if (nameEnd >= value.length) {
-                            log('Error: Invalid message format (missing US)');
-                            return;
-                        }
-
-                        const unstuffedName = byteUnstuff(value, pos, nameEnd);
-                        const eventName = decoder.decode(unstuffedName);
-
-                        pos = nameEnd + 1;
-
-                        let dataEnd = pos;
-                        while (dataEnd < value.length && value[dataEnd] !== 0x04) dataEnd++;
-                        if (dataEnd >= value.length) {
-                            log('Error: Invalid message format (missing EOT)');
-                            return;
-                        }
-
-                        const unstuffedData = byteUnstuff(value, pos, dataEnd);
-                        const eventData = decoder.decode(unstuffedData);
-
-                        log(`Received Message:
-    Event: ${eventName}
-    Data: ${eventData}
-    From: 0x${header.sender}
-    To: 0x${header.receiver}
-    Group: 0x${header.group}
-    Flags: 0x${header.flags}
-    MsgID: ${header.msgId}`);
-
-                    } catch (error) {
-                        log('Error parsing message: ' + error);
-                        const hexData = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                        log('Raw data: ' + hexData);
-                    }
+                bleHandler.onMessageReceived((name, data) => {
+                    log(`Received Message:
+    Event: ${name}
+    Data: ${data}`);
                 });
 
                 log('Connected!');
@@ -355,9 +180,7 @@
         }
 
         async function disconnect() {
-            if (device && device.gatt.connected) {
-                await device.gatt.disconnect();
-            }
+            await bleHandler.disconnect();
             document.getElementById('connectBtn').disabled = false;
             document.getElementById('disconnectBtn').disabled = true;
             document.getElementById('sendBtn').disabled = true;
@@ -371,11 +194,14 @@
         document.getElementById('sendBtn').addEventListener('click', async () => {
             const name = document.getElementById('eventName').value;
             const data = document.getElementById('eventData').value;
-            const receiver = document.getElementById('receiver').value;
-            const group = document.getElementById('group').value;
-            const flags = document.getElementById('flags').value;
+            const receiver = parseInt(document.getElementById('receiver').value, 16);
+            const group = parseInt(document.getElementById('group').value, 16);
+            const flags = parseInt(document.getElementById('flags').value, 16);
 
-            await sendEventMessage(name, data, receiver, group, flags);
+            await bleHandler.sendMessage(name, data, receiver, group, flags);
+            totalBytes += data.length;
+            messageCount++;
+            updateStats();
         });
         document.getElementById('startTest').addEventListener('click', startThroughputTest);
         document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
