@@ -10,9 +10,6 @@
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // Queue size should be power of 2 for efficient wrapping
-#define QUEUE_SIZE 16
-#define QUEUE_MASK (QUEUE_SIZE - 1)
-#define MAX_MSG_SIZE 512
 
 EventMsg msg;
 NimBLEServer *pServer = nullptr;
@@ -23,57 +20,6 @@ uint32_t lastReport = 0;
 uint32_t bytesReceived = 0;
 uint32_t bytesSent = 0;
 
-// Ring buffer for incoming messages
-struct MessageBuffer
-{
-    uint8_t data[MAX_MSG_SIZE];
-    size_t length;
-};
-
-struct MessageQueue
-{
-    MessageBuffer buffers[QUEUE_SIZE];
-    volatile uint16_t writeIndex;
-    volatile uint16_t readIndex;
-} queue;
-
-// Add message to queue
-bool queueMessage(const uint8_t *data, size_t length)
-{
-    if (length > MAX_MSG_SIZE)
-    {
-        DEBUG_PRINT("Message too large: %d bytes", length);
-        return false;
-    }
-
-    uint16_t nextWrite = (queue.writeIndex + 1) & QUEUE_MASK;
-    if (nextWrite == queue.readIndex)
-    {
-        DEBUG_PRINT("Queue full");
-        return false;
-    }
-
-    MessageBuffer &buffer = queue.buffers[queue.writeIndex];
-    memcpy(buffer.data, data, length);
-    buffer.length = length;
-
-    queue.writeIndex = nextWrite;
-    return true;
-}
-
-// Process next message in queue
-void processQueue()
-{
-    if (queue.readIndex == queue.writeIndex)
-    {
-        return; // Queue empty
-    }
-
-    MessageBuffer &buffer = queue.buffers[queue.readIndex];
-    msg.process(buffer.data, buffer.length);
-
-    queue.readIndex = (queue.readIndex + 1) & QUEUE_MASK;
-}
 
 class ServerCallbacks : public NimBLEServerCallbacks
 {
@@ -110,15 +56,8 @@ class CharacteristicCallbacks : public NimBLECharacteristicCallbacks
             // }
             // Serial.println();
 
-            if (queueMessage((uint8_t *)rxValue.data(), rxValue.length()))
-            {
-                Serial.println("Message queued successfully");
-            }
-            else
-            {
-                Serial.println("Failed to queue message");
-            }
-            Serial.println("=====================\n");
+            msg.process((uint8_t *)rxValue.data(), rxValue.length());
+          
         }
     }
 };
@@ -163,14 +102,24 @@ void setup()
     // Initialize EventMsg with BLE transmit callback
     msg.init([](uint8_t *data, size_t len)
              {
-        if (deviceConnected && pTxCharacteristic != nullptr) {
-            pTxCharacteristic->setValue(data, len);
-            pTxCharacteristic->notify();
-            bytesSent += len;
-            msgCount++;
-            return true;
-        }
-        return false; });
+
+      //write data to BLE characteristic in mtu sized chunks
+      int mtu=500;
+      int offset=0;
+       
+      for(int i=0;i<len;i+=mtu){
+        int chunksize=mtu<len-i?mtu:len-i;
+        pTxCharacteristic->setValue(data+offset, chunksize);
+        pTxCharacteristic->notify();
+        offset+=chunksize;
+      }
+      
+
+  
+
+
+
+        return true; });
 
     // Set local address and group
     msg.setAddr(0x01);
@@ -181,44 +130,26 @@ void setup()
                 {
                     Serial.printf("=== Message Received ===\n");
                     Serial.printf("Event: %s\n", event);
-                    Serial.printf("Data: %s\n", data);
+                    // Serial.printf("Data: %s\n", data);
                     Serial.printf("Data Length: %d bytes\n", strlen(data));
                     Serial.println("====================="); });
 }
 
 void loop()
 {
-    // Process any queued messages
-    processQueue();
-
-    // Print throughput stats every second
-    // if (millis() - lastReport >= 1000)
-    // {
-    //     if (deviceConnected)
-    //     {
-    //         float kbReceived = bytesReceived / 1024.0f;
-    //         float kbSent = bytesSent / 1024.0f;
-    //         Serial.printf("Throughput - RX: %.2f KB/s, TX: %.2f KB/s, Messages: %u\n",
-    //                       kbReceived, kbSent, msgCount);
-    //     }
-    //     bytesReceived = 0;
-    //     bytesSent = 0;
-    //     msgCount = 0;
-    //     lastReport = millis();
-    // }
 
     if (Serial.available() > 0)
     {
         char c = Serial.read();
-        if (c == 's')
-        {
-            msg.send("test", "test", 0x01, 0x00, 0x00);
-        }
+        // if (c == 's')
+        // {
+        //     msg.send("test", "test", 0xff, 0x00, 0x00);
+        // }
         if (c == 't')//t[eventname] [eventdata] //no [] in actual command tTestEvent TestEventData
         {
             String eventname = Serial.readStringUntil(' ');
             String eventdata = Serial.readStringUntil('\n');
-            msg.send(eventname.c_str(), eventdata.c_str(), 0x01, 0x00, 0x00);
+            msg.send(eventname.c_str(), eventdata.c_str(), 0xff, 0x00, 0x00);
         }
 
     }

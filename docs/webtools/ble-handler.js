@@ -6,6 +6,7 @@ class BleHandler {
         this.rxCharacteristic = null;
         this.eventMsg = new EventMsg();
         this.connected = false;
+        this.writeWithResponse = false;
         
         this.SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         this.CHARACTERISTIC_UUID_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
@@ -52,6 +53,11 @@ class BleHandler {
         this.connected = false;
     }
 
+    setWriteWithResponse(enabled) {
+        console.log('Write with response:', enabled);
+        this.writeWithResponse = enabled;
+    }
+
     async writeToBLE(data) {
         if (!this.rxCharacteristic) return false;
 
@@ -61,7 +67,11 @@ class BleHandler {
         while (offset < data.length) {
             let chunk = data.slice(offset, offset + chunkSize);
             offset += chunkSize;
-            await this.rxCharacteristic.writeValueWithoutResponse(chunk);
+            if (this.writeWithResponse) {
+                await this.rxCharacteristic.writeValue(chunk);
+            } else {
+                await this.rxCharacteristic.writeValueWithoutResponse(chunk);
+            }
         }
         return true;
     }

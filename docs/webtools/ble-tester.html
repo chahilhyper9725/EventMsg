@@ -3,84 +3,336 @@
 <head>
     <title>EventMsg BLE Tester</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            display: flex;
+            min-height: 100vh;
+            background: #f5f5f5;
         }
 
-        button {
-            margin: 5px;
-            padding: 10px;
+        .sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-right: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        #log {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 200px;
-            overflow-y: auto;
-            font-family: monospace;
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: calc(100% - 300px);
         }
 
-        .stats {
-            margin: 10px 0;
-            padding: 10px;
-            background: #f0f0f0;
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .form-group {
-            margin: 10px 0;
+            margin-bottom: 15px;
         }
 
         label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
+        }
+
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0052a3;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.8em;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+
+        .message-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .message-item {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .message-header {
+            padding: 10px;
+            background: #f8f8f8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .message-content {
+            padding: 15px;
+            display: none;
+            background: #fff;
+            border-top: 1px solid #eee;
+        }
+
+        .message-content.expanded {
+            display: block;
+        }
+
+        .size-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: white;
+        }
+
+        .size-small {
+            background: #4caf50;
+        }
+
+        .size-medium {
+            background: #2196f3;
+        }
+
+        .size-large {
+            background: #9c27b0;
+        }
+
+        .switch {
+            position: relative;
             display: inline-block;
-            width: 100px;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #0066cc;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        #log {
+            font-family: monospace;
+            font-size: 12px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            border-radius: 4px;
+        }
+
+        #log .debug {
+            color: #666;
+        }
+
+        #log .error {
+            color: #ff5252;
+        }
+
+        .message-timestamp {
+            color: #666;
+            font-size: 0.8em;
+        }
+
+        .message-event {
+            font-weight: 500;
+            flex: 1;
         }
     </style>
 </head>
-
 <body>
-    <h1>EventMsg BLE Tester</h1>
+    <div class="sidebar">
+        <div class="card">
+            <h2>Connection</h2>
+            <div style="margin-top: 15px">
+                <button id="connectBtn" style="width: 100%; margin-bottom: 10px">Connect to Device</button>
+                <button id="disconnectBtn" style="width: 100%" disabled>Disconnect</button>
+            </div>
+        </div>
 
-    <button id="connectBtn">Connect to Device</button>
-    <button id="disconnectBtn" disabled>Disconnect</button>
-
-    <div class="stats">
-        <div>Messages Sent: <span id="msgCount">0</span></div>
-        <div>Bytes Sent: <span id="bytesSent">0</span></div>
-        <div>Throughput: <span id="throughput">0</span> KB/s</div>
+        <div class="card">
+            <h2>Settings</h2>
+            <div class="form-group" style="margin-top: 15px">
+                <label>Write with Response</label>
+                <label class="switch">
+                    <input type="checkbox" id="writeWithResponse">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Auto-scroll Log</label>
+                <label class="switch">
+                    <input type="checkbox" id="autoScroll" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button id="clearLogs" style="width: 100%">Clear Logs</button>
+        </div>
     </div>
 
-    <div class="form-group">
-        <label>Event Name:</label>
-        <input type="text" id="eventName" value="TEST">
+    <div class="main-content">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Messages Sent</div>
+                <div class="stat-value" id="msgCount">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Bytes Sent</div>
+                <div class="stat-value" id="bytesSent">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Throughput (KB/s)</div>
+                <div class="stat-value" id="throughput">0</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Send Message</h2>
+            <div style="margin-top: 15px">
+                <div class="form-group">
+                    <label>Event Name</label>
+                    <input type="text" id="eventName" value="TEST">
+                </div>
+
+                <div class="form-group">
+                    <label>Data</label>
+                    <input type="text" id="eventData" value="Hello World">
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px">
+                    <div class="form-group">
+                        <label>Receiver (hex)</label>
+                        <input type="text" id="receiver" value="FF">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Group (hex)</label>
+                        <input type="text" id="group" value="00">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Flags (hex)</label>
+                        <input type="text" id="flags" value="80">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px">
+                    <button id="sendBtn" disabled style="flex: 1">Send Message</button>
+                    <button id="startTest" disabled style="flex: 1">Start Test</button>
+                    <button id="stopTest" disabled style="flex: 1">Stop Test</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Received Messages</h2>
+            <div id="messageList" class="message-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>Debug Log</h2>
+            <div id="log"></div>
+        </div>
     </div>
-
-    <div class="form-group">
-        <label>Data:</label>
-        <input type="text" id="eventData" value="Hello World">
-    </div>
-
-    <div class="form-group">
-        <label>Receiver:</label>
-        <input type="text" id="receiver" value="FF" size="2">
-    </div>
-
-    <div class="form-group">
-        <label>Group:</label>
-        <input type="text" id="group" value="00" size="2">
-    </div>
-
-    <div class="form-group">
-        <label>Flags:</label>
-        <input type="text" id="flags" value="80" size="2">
-    </div>
-
-    <button id="sendBtn" disabled>Send Message</button>
-    <button id="startTest" disabled>Start Throughput Test</button>
-    <button id="stopTest" disabled>Stop Test</button>
-
-    <h3>Log</h3>
-    <div id="log"></div>
 
     <script src="event-msg.js"></script>
     <script src="ble-handler.js"></script>
@@ -91,11 +343,60 @@
         let totalBytes = 0;
         let messageCount = 0;
 
+        function formatTimestamp() {
+            return new Date().toLocaleTimeString('en-US', { 
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+        }
+
+        function getSizeBadge(size) {
+            if (size < 100) return '<span class="size-badge size-small">' + size + 'B</span>';
+            if (size < 500) return '<span class="size-badge size-medium">' + size + 'B</span>';
+            return '<span class="size-badge size-large">' + size + 'B</span>';
+        }
+
+        function addMessageToList(name, data) {
+            const messageList = document.getElementById('messageList');
+            const size = new TextEncoder().encode(data).length;
+            const id = 'msg-' + Date.now();
+            
+            const html = `
+                <div class="message-item">
+                    <div class="message-header" onclick="toggleMessage('${id}')">
+                        <span class="message-timestamp">${formatTimestamp()}</span>
+                        <span class="message-event">${name}</span>
+                        ${getSizeBadge(size)}
+                    </div>
+                    <div class="message-content" id="${id}">
+                        <pre>${data}</pre>
+                    </div>
+                </div>
+            `;
+            
+            messageList.insertAdjacentHTML('afterbegin', html);
+        }
+
+        function toggleMessage(id) {
+            const content = document.getElementById(id);
+            content.classList.toggle('expanded');
+        }
+
         function log(message, isDebug = false) {
             const logDiv = document.getElementById('log');
-            const prefix = isDebug ? '<span style="color: #666">[DEBUG]</span> ' : '';
+            const timestamp = formatTimestamp();
+            const prefix = isDebug ? 
+                `<span class="debug">[${timestamp}][DEBUG]</span> ` : 
+                `<span>[${timestamp}]</span> `;
+            
             logDiv.innerHTML += prefix + message + '<br>';
-            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            if (document.getElementById('autoScroll').checked) {
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
         }
 
         // Override console.log for debugging
@@ -109,7 +410,7 @@
         console.error = function() {
             originalConsoleError.apply(console, arguments);
             const message = Array.from(arguments).join(' ');
-            log('<span style="color: red">' + message + '</span>', true);
+            log(`<span class="error">${message}</span>`, true);
         };
 
         function updateStats() {
@@ -163,6 +464,7 @@
                 if (!success) throw new Error('Connection failed');
 
                 bleHandler.onMessageReceived((name, data) => {
+                    addMessageToList(name, data);
                     log(`Received Message:
     Event: ${name}
     Data: ${data}`);
@@ -205,6 +507,15 @@
         });
         document.getElementById('startTest').addEventListener('click', startThroughputTest);
         document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
+        document.getElementById('clearLogs').addEventListener('click', () => {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('messageList').innerHTML = '';
+        });
+
+        // Initialize settings
+        document.getElementById('writeWithResponse').addEventListener('change', (e) => {
+            bleHandler.setWriteWithResponse(e.target.checked);
+        });
     </script>
 </body>
 </html>
