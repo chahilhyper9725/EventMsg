@@ -82,7 +82,121 @@ graph TB
 
 ## Quick Start
 
-### Basic Usage with Event Dispatchers
+### Using Event Subsystems
+
+The EventDispatcher enables organizing code into logical subsystems:
+
+```cpp
+// Define a subsystem
+struct SensorSubsystem {
+    EventDispatcher dispatcher;
+    float lastTemp = 25.0f;
+    
+    SensorSubsystem() : dispatcher(DEVICE01) {
+        dispatcher.on("readTemp", [this](const char* data, const EventHeader& header) {
+            char response[32];
+            snprintf(response, sizeof(response), "%.1f", lastTemp);
+            auto responseHeader = dispatcher.createResponseHeader(header);
+            eventMsg.send("tempData", response, responseHeader);
+        });
+    }
+    
+    void registerWithEventMsg() {
+        eventMsg.registerDispatcher("sensor", 
+            dispatcher.createHeader(DEVICE01),
+            dispatcher.getHandler());
+    }
+};
+
+// Use multiple subsystems
+SensorSubsystem sensors;
+FileSubsystem files;
+
+void setup() {
+    // Initialize event system
+    eventMsg.init(writeCallback);
+    
+    // Register subsystems
+    sensors.registerWithEventMsg();
+    files.registerWithEventMsg();
+}
+```
+
+### Features
+- Organize code into logical subsystems
+- Each subsystem handles its own events
+- Clean response header management
+- Independent dispatcher instances
+- Automatic event routing
+
+### Using EventDispatcher
+
+The library now includes a simplified EventDispatcher for easier event handling:
+
+```cpp
+#include <EventMsg.h>
+#include <EventDispatcher.h>
+
+EventMsg eventMsg;
+EventDispatcher fileDispatcher(DEVICE01);  // Initialize with local address
+
+void setup() {
+    Serial.begin(115200);
+    
+    // Initialize EventMsg
+    eventMsg.init([](uint8_t* data, size_t len) {
+        return Serial.write(data, len) == len;
+    });
+    
+    // Register event handlers
+    fileDispatcher.on("deleteFile", [](const char* data, const EventHeader& header) {
+        Serial.printf("Deleting file: %s\n", data);
+        
+        // Send response using helper function
+        auto responseHeader = EventDispatcher::createResponseHeader(header);
+        eventMsg.send("fileDeleted", "success", responseHeader);
+    });
+    
+    fileDispatcher.on("renameFile", [](const char* data, const EventHeader& header) {
+        Serial.printf("Renaming file: %s\n", data);
+        
+        // Create broadcast header using helper
+        auto broadcastHeader = EventDispatcher::createHeader(DEVICEBROADCAST);
+        eventMsg.send("fileRenamed", "success", broadcastHeader);
+    });
+    
+    // Register dispatcher with EventMsg
+    auto dispatcherHeader = EventDispatcher::createHeader(DEVICE01, GROUP00);
+    eventMsg.registerDispatcher("fileHandler", dispatcherHeader, EventDispatcher::handler);
+}
+```
+
+### Event Header Structure
+
+The new EventHeader struct simplifies message routing:
+
+```cpp
+struct EventHeader {
+    uint8_t senderId;    // Source device address
+    uint8_t receiverId;  // Destination device address
+    uint8_t groupId;     // Group address
+    uint8_t flags;       // Message flags
+};
+```
+
+### Helper Functions
+
+EventDispatcher provides convenient helper functions for header creation:
+
+```cpp
+// Create header for sending to specific device/group
+auto header = EventDispatcher::createHeader(DEVICE01, GROUP00);
+
+// Create header for responding to a message
+auto responseHeader = EventDispatcher::createResponseHeader(originalHeader);
+```
+
+### Legacy Basic Usage with Event Dispatchers
 
 ```cpp
 #include <EventMsg.h>
@@ -216,6 +330,30 @@ void loop() {
 ```
 
 ## API Reference
+
+### Class: EventDispatcher
+
+#### Methods
+
+##### `EventDispatcher(uint8_t localAddr = 0x00)`
+Create an EventDispatcher instance
+- `localAddr`: Local device address for responses
+
+##### `void on(const char* eventName, EventCallback callback)`
+Register an event handler
+- `eventName`: Event to handle
+- `callback`: Function `void(const char* data, const EventHeader& header)`
+
+##### `static EventHeader createHeader(uint8_t receiverId, uint8_t groupId = 0x00)`
+Create message header
+- `receiverId`: Destination address
+- `groupId`: Group address
+- Returns: Configured EventHeader
+
+##### `static EventHeader createResponseHeader(const EventHeader& originalHeader)`
+Create response header
+- `originalHeader`: Original message header
+- Returns: Header configured for response
 
 ### Class: EventMsg
 

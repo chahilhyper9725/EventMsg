@@ -4,7 +4,94 @@ This document describes the internal implementation details of the EventMsg libr
 
 ## Core Components
 
-### 1. Message Framing
+### 1. Event Dispatcher and Subsystems
+
+The EventDispatcher provides a foundation for organizing code into logical subsystems:
+
+```cpp
+// Define a subsystem with its own event handling
+struct FileSubsystem {
+    EventDispatcher dispatcher;
+    
+    FileSubsystem() : dispatcher(DEVICE01) {
+        // Register event handlers
+        dispatcher.on("write", [this](const char* data, const EventHeader& header) {
+            // Handle file write
+            auto response = dispatcher.createResponseHeader(header);
+            eventMsg.send("writeComplete", "success", response);
+        });
+    }
+    
+    void registerWithEventMsg() {
+        eventMsg.registerDispatcher("file", 
+            dispatcher.createHeader(DEVICE01),
+            dispatcher.getHandler());
+    }
+};
+```
+
+Features:
+- Independent dispatchers for each subsystem
+- Event handlers scoped to their subsystem
+- Automatic header management
+- Clean response handling
+- Easy subsystem registration
+
+Benefits:
+- Modular code organization
+- Clear separation of concerns
+- Reusable subsystems
+- Self-contained event handling
+- Simplified message routing
+
+### 2. Event Dispatcher Implementation
+
+The EventDispatcher provides a simpler interface for event handling:
+
+```cpp
+class EventDispatcher {
+    // Event callback with header information
+    using EventCallback = std::function<void(const char* data, const EventHeader& header)>;
+    
+    // Internal implementation
+    std::map<std::string, EventCallback> handlers;
+    uint8_t localAddress;
+    static EventDispatcher* instance;
+    
+    // Helper functions for header management
+    static EventHeader createHeader(...);
+    static EventHeader createResponseHeader(...);
+};
+```
+
+Key features:
+- Event-specific callbacks
+- Simplified header management
+- Automatic event routing
+- Header helper functions
+
+#### Header Management
+
+```cpp
+struct EventHeader {
+    uint8_t senderId;    // Automatically set from localAddress
+    uint8_t receiverId;  // Set by user or helper functions
+    uint8_t groupId;     // Optional group addressing
+    uint8_t flags;       // Message flags
+};
+```
+
+#### Memory Usage
+```cpp
+// Per event handler overhead
+struct {
+    std::string eventName;      // ~24 bytes
+    EventCallback callback;     // ~4-8 bytes
+    // Total: ~32 bytes per handler
+};
+```
+
+### 2. Message Framing
 
 The library uses a byte-oriented framing system with special control characters:
 
@@ -120,7 +207,32 @@ uint8_t eventDataBuffer[MAX_EVENT_DATA_SIZE];
 
 ## Callback System
 
-### 1. Write Callback
+### 1. EventDispatcher Callbacks
+
+The EventDispatcher provides a simpler callback system:
+
+```cpp
+// Register event handler
+dispatcher.on("event_name", [](const char* data, const EventHeader& header) {
+    // Handle event
+});
+
+// Internal routing
+void EventDispatcher::handleEvent(const char* eventName, const char* data, const EventHeader& header) {
+    auto it = handlers.find(eventName);
+    if (it != handlers.end()) {
+        it->second(data, header);
+    }
+}
+```
+
+Benefits:
+- Event-specific handlers
+- Simplified parameter list
+- Header information bundling
+- Automatic response routing
+
+### 2. Write Callback
 
 ```cpp
 using WriteCallback = std::function<bool(uint8_t*, size_t)>;

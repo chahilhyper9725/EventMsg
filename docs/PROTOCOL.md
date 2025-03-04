@@ -18,36 +18,73 @@ The EventMsg protocol uses the following frame format:
 
 ### Header Format
 
-6-byte header structure:
+The header is now encapsulated in an EventHeader structure for easier management:
+
+```cpp
+struct EventHeader {
+    uint8_t senderId;    // Source device address
+    uint8_t receiverId;  // Destination device address (0xFF for broadcast)
+    uint8_t groupId;     // Group identifier (0x00 for no group)
+    uint8_t flags;       // Message flags
+};
+```
+
+When transmitted, the header includes message ID (2 bytes) following this format:
 ```
 [Sender Address][Receiver Address][Group Address][Flags][Message ID MSB][Message ID LSB]
 ```
 
-- **Sender Address** (1 byte): Source device address
-- **Receiver Address** (1 byte): Destination device address (0xFF for broadcast)
-- **Group Address** (1 byte): Group identifier (0x00 for no group)
-- **Flags** (1 byte): Message flags
-- **Message ID** (2 bytes): Sequential message identifier (Big-endian)
+Helper functions simplify header creation:
+```cpp
+// Create header for specific device/group
+auto header = EventDispatcher::createHeader(DEVICE01, GROUP00);
+
+// Create response header automatically setting sender/receiver
+auto responseHeader = EventDispatcher::createResponseHeader(originalHeader);
+```
 
 ## Event Handler System
 
-The EventMsg library implements two types of handlers:
+The EventMsg library now provides two ways to handle events:
 
-### 1. Event Dispatchers
-- Device-based dispatchers that process formatted event data
-- Each dispatcher registers with:
-  - Device name (string identifier)
-  - Receiver ID (address to listen for)
-  - Group ID (group to listen for)
-  - Callback function receiving:
-    - Device name
-    - Event name
-    - Event data (as string)
-    - Header buffer
-    - Sender address
-    - Receiver address
+### 1. Event Dispatcher (New Simplified Interface)
+```cpp
+// Create dispatcher with local address
+EventDispatcher dispatcher(DEVICE01);
 
-### 2. Raw Data Handlers
+// Register event-specific handlers
+dispatcher.on("temperature", [](const char* data, const EventHeader& header) {
+    float temp = atof(data);
+    // Process temperature data
+    
+    // Send response using helper
+    auto responseHeader = EventDispatcher::createResponseHeader(header);
+    eventMsg.send("temp_ack", "received", responseHeader);
+});
+
+// Register with EventMsg
+auto header = EventDispatcher::createHeader(DEVICE01, GROUP00);
+eventMsg.registerDispatcher("tempHandler", header, EventDispatcher::handler);
+```
+
+Features:
+- Event-specific callbacks
+- Simplified parameter list
+- Automatic header management
+- Built-in response helpers
+- Type-safe header handling
+
+### 2. Legacy Event Dispatchers
+The original dispatcher system remains available for backwards compatibility:
+```cpp
+void legacyHandler(const char* deviceName, const char* event, const char* data, 
+                  uint8_t* header, uint8_t sender, uint8_t receiver) {
+    // Legacy handling code
+}
+eventMsg.registerDispatcher("legacy", receiverId, groupId, legacyHandler);
+```
+
+### 3. Raw Data Handlers
 - Handlers that receive raw, unprocessed message data
 - Each raw handler registers with:
   - Device name (string identifier)
@@ -69,7 +106,7 @@ The EventMsg library implements two types of handlers:
 
 ### Message Routing
 
-Messages are routed through a priority-based filtering system:
+Messages are routed through a priority-based filtering system, with support for both new and legacy handlers:
 
 ```mermaid
 flowchart TD

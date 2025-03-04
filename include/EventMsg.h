@@ -9,6 +9,13 @@
 
 using namespace std;
 
+struct EventHeader {
+    uint8_t senderId;
+    uint8_t receiverId;
+    uint8_t groupId;
+    uint8_t flags;
+};
+
 
 // Protocol Control Characters
 #define SOH 0x01  // Start of Header
@@ -32,24 +39,19 @@ using namespace std;
 // Function type for data transmission
 using WriteCallback = std::function<bool(uint8_t*, size_t)>;
 
-// Function type for event handling with full context
-using EventDispatcherCallback = std::function<void(const char*, const char*, const char*, uint8_t*, uint8_t, uint8_t)>;
-// Function type for raw data handling
-using RawDataCallback = std::function<void(const char*,const char*, uint8_t*, size_t)>;
+// Function type for event handling with header
+using EventDispatcherCallback = std::function<void(const char* deviceName, const char* eventName, const char* data, EventHeader& header)>;
+// Function type for raw data handling with header
+using RawDataCallback = std::function<void(const char* deviceName, const char* eventName, const uint8_t* data, size_t length, EventHeader& header)>;
 
-// Structure to hold raw data handler information
+// Handler structures now using EventHeader internally
 struct RawDataHandler {
     std::string deviceName;
-    uint8_t receiverId;
-    uint8_t groupId;
     RawDataCallback callback;
 };
 
-// Structure to hold dispatcher information
-struct EventDispatcher {
+struct EventDispatcherInfo {
     std::string deviceName;
-    uint8_t receiverId;
-    uint8_t groupId;
     EventDispatcherCallback callback;
 };
 
@@ -71,9 +73,9 @@ private:
     uint8_t groupAddr;
     uint16_t msgIdCounter;
     WriteCallback writeCallback;
-    std::vector<EventDispatcher> dispatchers;
+    std::vector<EventDispatcherInfo> dispatchers;
     std::vector<RawDataHandler> rawHandlers;
-    EventDispatcher* unhandledHandler;
+    EventDispatcherInfo* unhandledHandler;
 
     // State machine buffers and tracking
     ProcessState state;
@@ -100,17 +102,17 @@ public:
     void setAddr(uint8_t addr);
     void setGroup(uint8_t addr);
     
-    // Message handling
-    size_t send(const char* name, const char* data, uint8_t recvAddr, uint8_t groupAddr, uint8_t flags);
+    // Message handling with EventHeader
+    size_t send(const char* name, const char* data, const EventHeader& header);
     bool process(uint8_t* data, size_t len);
     
-    // Event registration
-    bool registerRawHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, RawDataCallback cb);
+    // Event registration with simplified parameters
+    bool registerRawHandler(const char* deviceName, const EventHeader& header, RawDataCallback cb);
     bool unregisterRawHandler(const char* deviceName);
-    void setUnhandledHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb);
+    void setUnhandledHandler(const char* deviceName, const EventHeader& header, EventDispatcherCallback cb);
     
-    // Dispatcher registration
-    bool registerDispatcher(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb);
+    // Dispatcher registration with simplified parameters
+    bool registerDispatcher(const char* deviceName, const EventHeader& header, EventDispatcherCallback cb);
     bool unregisterDispatcher(const char* deviceName);
 };
 

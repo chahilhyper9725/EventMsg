@@ -16,7 +16,7 @@ void EventMsg::setGroup(uint8_t addr) {
     groupAddr = addr;
 }
 
-bool EventMsg::registerDispatcher(const char* deviceName, uint8_t recvId, uint8_t grpId, EventDispatcherCallback cb) {
+bool EventMsg::registerDispatcher(const char* deviceName, const EventHeader& header, EventDispatcherCallback cb) {
     // Check if dispatcher already exists
     for (const auto& dispatcher : dispatchers) {
         if (dispatcher.deviceName == deviceName) {
@@ -25,10 +25,8 @@ bool EventMsg::registerDispatcher(const char* deviceName, uint8_t recvId, uint8_
     }
 
     // Create new dispatcher
-    EventDispatcher dispatcher{
+    EventDispatcherInfo dispatcher{
         std::string(deviceName),
-        recvId,
-        grpId,
         cb
     };
     dispatchers.push_back(dispatcher);
@@ -45,7 +43,7 @@ bool EventMsg::unregisterDispatcher(const char* deviceName) {
     return false;
 }
 
-bool EventMsg::registerRawHandler(const char* deviceName, uint8_t recvId, uint8_t grpId, RawDataCallback cb) {
+bool EventMsg::registerRawHandler(const char* deviceName, const EventHeader& header, RawDataCallback cb) {
     // Check if handler already exists
     for (const auto& handler : rawHandlers) {
         if (handler.deviceName == deviceName) {
@@ -56,8 +54,6 @@ bool EventMsg::registerRawHandler(const char* deviceName, uint8_t recvId, uint8_
     // Create new handler
     RawDataHandler handler{
         std::string(deviceName),
-        recvId,
-        grpId,
         cb
     };
     rawHandlers.push_back(handler);
@@ -74,13 +70,11 @@ bool EventMsg::unregisterRawHandler(const char* deviceName) {
     return false;
 }
 
-void EventMsg::setUnhandledHandler(const char* deviceName, uint8_t recvId, uint8_t grpId, EventDispatcherCallback cb) {
+void EventMsg::setUnhandledHandler(const char* deviceName, const EventHeader& header, EventDispatcherCallback cb) {
     if (unhandledHandler == nullptr) {
-        unhandledHandler = new EventDispatcher;
+        unhandledHandler = new EventDispatcherInfo;
     }
     unhandledHandler->deviceName = std::string(deviceName);
-    unhandledHandler->receiverId = recvId;
-    unhandledHandler->groupId = grpId;
     unhandledHandler->callback = cb;
 }
 
@@ -136,7 +130,7 @@ size_t EventMsg::StringToBytes(const char* str, uint8_t* output, size_t outputMa
     return len;
 }
 
-size_t EventMsg::send(const char* name, const char* data, uint8_t recvAddr, uint8_t groupAddr, uint8_t flags) {
+size_t EventMsg::send(const char* name, const char* data, const EventHeader& header) {
     uint8_t tempBuf[MAX_EVENT_NAME_SIZE * 2];
     uint8_t msgBuf[MAX_EVENT_DATA_SIZE * 2];
     size_t pos = 0;
@@ -144,18 +138,18 @@ size_t EventMsg::send(const char* name, const char* data, uint8_t recvAddr, uint
     // Start message
     msgBuf[pos++] = SOH;
 
-    // Create and stuff header
-    uint8_t header[] = {
-        localAddr,
-        recvAddr,
-        groupAddr,
-        flags,
+    // Create and stuff header bytes
+    uint8_t headerBytes[] = {
+        localAddr,                // Local address as sender
+        header.receiverId,        // Destination address
+        header.groupId,          // Group address
+        header.flags,            // Flags
         (uint8_t)(msgIdCounter >> 8),
         (uint8_t)(msgIdCounter & 0xFF)
     };
     msgIdCounter++;
 
-    size_t stuffedLen = ByteStuff(header, sizeof(header), tempBuf, sizeof(tempBuf));
+    size_t stuffedLen = ByteStuff(headerBytes, sizeof(headerBytes), tempBuf, sizeof(tempBuf));
     if(stuffedLen == 0) return 0;
     memcpy(&msgBuf[pos], tempBuf, stuffedLen);
     pos += stuffedLen;
@@ -220,8 +214,6 @@ bool EventMsg::processNextByte(uint8_t byte) {
         return true;
     }
     
-    // DEBUG_PRINT("%02X ", byte);
-    
     // Process based on current state
     switch (state) {
         case ProcessState::WAITING_FOR_SOH:
@@ -284,52 +276,44 @@ bool EventMsg::processNextByte(uint8_t byte) {
                 // Message complete, process it
                 currentBuffer[bufferPos] = '\0';
                 
-                // Use preserved header info
-                uint8_t receiver = headerBuffer[1];
-                uint8_t group = headerBuffer[2];
-                DEBUG_PRINT("EOT Received: receiver=0x%02X, group=0x%02X", receiver, group);
+                // Create EventHeader from received data
+                EventHeader msgHeader = {
+                    headerBuffer[0], // sender
+                    headerBuffer[1], // receiver
+                    headerBuffer[2], // group
+                    headerBuffer[3]  // flags
+                };
                 
                 bool eventHandled = false;
 
                 // Call raw data handlers first
                 for (const auto& handler : rawHandlers) {
-                    if ((receiver == handler.receiverId || receiver == 0xFF) &&
-                        (group == handler.groupId || group == 0)) {
-                        if (handler.callback) {
-                            handler.callback(handler.deviceName.c_str(),(const char*)eventNameBuffer, currentBuffer, bufferPos);
-                        }
+                    if (handler.callback) {
+                        handler.callback(handler.deviceName.c_str(),
+                                      (const char*)eventNameBuffer,
+                                      currentBuffer,
+                                      bufferPos,
+                                      msgHeader);
                     }
                 }
 
-                // Dispatch to all matching handlers
+                // Call dispatchers
                 for (const auto& dispatcher : dispatchers) {
-                    if ((receiver == dispatcher.receiverId || receiver == 0xFF) &&
-                        (group == dispatcher.groupId || group == 0)) {
-                        DEBUG_PRINT("Message accepted for dispatcher %s", dispatcher.deviceName.c_str());
-                        if (dispatcher.callback) {
-                            dispatcher.callback(
-                                dispatcher.deviceName.c_str(),
-                                (const char*)eventNameBuffer,
-                                (const char*)eventDataBuffer,
-                                headerBuffer,
-                                headerBuffer[0], // sender
-                                receiver
-                            );
-                        }
+                    if (dispatcher.callback) {
+                        dispatcher.callback(dispatcher.deviceName.c_str(),
+                                         (const char*)eventNameBuffer,
+                                         (const char*)eventDataBuffer,
+                                         msgHeader);
                         eventHandled = true;
                     }
                 }
 
                 // Call unhandled handler if no dispatcher handled the event
                 if (!eventHandled && unhandledHandler && unhandledHandler->callback) {
-                    unhandledHandler->callback(
-                        unhandledHandler->deviceName.c_str(),
-                        (const char*)eventNameBuffer,
-                        (const char*)eventDataBuffer,
-                        headerBuffer,
-                        headerBuffer[0], // sender
-                        receiver
-                    );
+                    unhandledHandler->callback(unhandledHandler->deviceName.c_str(),
+                                            (const char*)eventNameBuffer,
+                                            (const char*)eventDataBuffer,
+                                            msgHeader);
                 }
                 
                 // Reset for next message
@@ -343,6 +327,17 @@ bool EventMsg::processNextByte(uint8_t byte) {
             break;
     }
     
+    return true;
+}
+
+bool EventMsg::process(uint8_t* data, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        if (!processNextByte(data[i])) {
+            resetState();
+            return false;
+        }
+    }
+    return true;
     return true;
 }
 
