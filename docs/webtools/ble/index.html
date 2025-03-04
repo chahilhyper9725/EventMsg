@@ -1,46 +1,130 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>EventMsg BLE Tester</title>
+    <title>EventMsg BLE Tool</title>
     <style>
+        :root {
+            --primary: #2196F3;
+            --success: #4CAF50;
+            --warning: #FFC107;
+            --error: #F44336;
+            --gray: #757575;
+            --light-bg: #f5f5f5;
+        }
+
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            display: flex;
-            min-height: 100vh;
-            background: #f5f5f5;
+            padding: 20px;
+            background: var(--light-bg);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
         }
 
         .sidebar {
-            width: 300px;
             background: white;
             padding: 20px;
-            border-right: 1px solid #eee;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .main-content {
-            flex: 1;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
+            display: grid;
             gap: 20px;
-            max-width: calc(100% - 300px);
         }
 
         .card {
             background: white;
-            border-radius: 8px;
             padding: 20px;
+            border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card-header {
+            font-size: 1.2em;
+            font-weight: 500;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .status.connected {
+            background: var(--success);
+            color: white;
+        }
+
+        .status.disconnected {
+            background: var(--gray);
+            color: white;
+        }
+
+        .device-grid {
+            display: grid;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .device-item {
+            padding: 10px;
+            background: var(--light-bg);
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .device-info {
+            font-size: 0.9em;
+        }
+
+        .device-type {
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background: var(--gray);
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--primary);
+            border: 1px solid var(--primary);
         }
 
         .form-group {
@@ -50,472 +134,405 @@
         label {
             display: block;
             margin-bottom: 5px;
-            color: #666;
+            color: var(--gray);
             font-size: 0.9em;
         }
 
-        input[type="text"] {
+        input {
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            font-size: 14px;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #0066cc;
-            box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
-        }
-
-        button {
-            background: #0066cc;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-
-        button:hover {
-            background: #0052a3;
-        }
-
-        button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .stat-label {
-            color: #666;
-            font-size: 0.8em;
-            margin-bottom: 5px;
-        }
-
-        .stat-value {
-            font-size: 1.2em;
-            font-weight: 500;
-        }
-
-        .message-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .message-item {
-            border: 1px solid #eee;
-            border-radius: 4px;
             margin-bottom: 10px;
-            overflow: hidden;
         }
 
-        .message-header {
-            padding: 10px;
-            background: #f8f8f8;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
         }
 
-        .message-content {
+        .log-area {
+            font-family: monospace;
+            background: #2b2b2b;
+            color: #e6e6e6;
             padding: 15px;
-            display: none;
-            background: #fff;
-            border-top: 1px solid #eee;
+            border-radius: 4px;
+            height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
         }
 
-        .message-content.expanded {
+        .log-entry {
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+
+        .log-time {
+            color: var(--primary);
+        }
+
+        .log-message {
+            margin-left: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--gray);
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
             display: block;
         }
 
-        .size-badge {
+        .pill {
+            display: inline-block;
             padding: 2px 8px;
             border-radius: 12px;
-            font-size: 12px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+
+        .pill.event {
+            background: var(--primary);
             color: white;
         }
 
-        .size-small {
-            background: #4caf50;
-        }
-
-        .size-medium {
-            background: #2196f3;
-        }
-
-        .size-large {
-            background: #9c27b0;
-        }
-
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 24px;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 24px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: #0066cc;
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(26px);
-        }
-
-        #log {
-            font-family: monospace;
-            font-size: 12px;
-            background: #1e1e1e;
-            color: #d4d4d4;
-            padding: 10px;
-            height: 200px;
-            overflow-y: auto;
-            border-radius: 4px;
-        }
-
-        #log .debug {
-            color: #666;
-        }
-
-        #log .error {
-            color: #ff5252;
-        }
-
-        .message-timestamp {
-            color: #666;
-            font-size: 0.8em;
-        }
-
-        .message-event {
-            font-weight: 500;
-            flex: 1;
+        .pill.address {
+            background: var(--warning);
+            color: black;
         }
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="card">
-            <h2>Connection</h2>
-            <div style="margin-top: 15px">
-                <button id="connectBtn" style="width: 100%; margin-bottom: 10px">Connect to Device</button>
-                <button id="disconnectBtn" style="width: 100%" disabled>Disconnect</button>
+    <div class="container">
+        <div class="sidebar">
+            <div class="card-header">
+                Connection
+                <span id="statusText" class="status disconnected">Disconnected</span>
+            </div>
+            <button id="connectBtn" class="secondary">Connect to Device</button>
+            <button id="disconnectBtn" disabled>Disconnect</button>
+            
+            <div style="margin-top: 20px;">
+                <div class="card-header">Quick Actions</div>
+                <button id="startDiscoveryBtn" disabled class="secondary">Start Discovery</button>
+                <button id="clearLogBtn" class="secondary">Clear Log</button>
             </div>
         </div>
 
-        <div class="card">
-            <h2>Settings</h2>
-            <div class="form-group" style="margin-top: 15px">
-                <label>Write with Response</label>
-                <label class="switch">
-                    <input type="checkbox" id="writeWithResponse">
-                    <span class="slider"></span>
-                </label>
+        <div class="main-content">
+            <div class="card">
+                <div class="card-header">Discovered Devices</div>
+                <div id="deviceList" class="device-grid"></div>
             </div>
-            <div class="form-group">
-                <label>Auto-scroll Log</label>
-                <label class="switch">
-                    <input type="checkbox" id="autoScroll" checked>
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <button id="clearLogs" style="width: 100%">Clear Logs</button>
-        </div>
-    </div>
 
-    <div class="main-content">
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-label">Messages Sent</div>
-                <div class="stat-value" id="msgCount">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Bytes Sent</div>
-                <div class="stat-value" id="bytesSent">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Throughput (KB/s)</div>
-                <div class="stat-value" id="throughput">0</div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Send Message</h2>
-            <div style="margin-top: 15px">
-                <div class="form-group">
-                    <label>Event Name</label>
-                    <input type="text" id="eventName" value="TEST">
+            <div class="card">
+                <div class="tabs">
+                    <button class="tab active" data-tab="send">Send Message</button>
+                    <button class="tab" data-tab="peer">Peer Management</button>
                 </div>
 
-                <div class="form-group">
-                    <label>Data</label>
-                    <input type="text" id="eventData" value="Hello World">
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px">
+                <div class="tab-content active" data-tab="send">
                     <div class="form-group">
-                        <label>Receiver (hex)</label>
-                        <input type="text" id="receiver" value="FF">
+                        <label>Target Address</label>
+                        <input type="text" id="targetInput" placeholder="0x02">
                     </div>
-
                     <div class="form-group">
-                        <label>Group (hex)</label>
-                        <input type="text" id="group" value="00">
+                        <label>Message</label>
+                        <input type="text" id="messageInput" placeholder="Enter message">
                     </div>
-
-                    <div class="form-group">
-                        <label>Flags (hex)</label>
-                        <input type="text" id="flags" value="80">
+                    <div class="form-group options">
+                        <label>Options</label>
+                        <div class="checkbox-group">
+                            <label>
+                                <input type="checkbox" id="jsonOption">
+                                JSON Format
+                            </label>
+                            <label>
+                                <input type="checkbox" id="priorityOption">
+                                High Priority
+                            </label>
+                        </div>
+                        <div class="timeout-group">
+                            <label>
+                                <input type="checkbox" id="timeoutOption">
+                                Message Timeout
+                            </label>
+                            <input type="number" id="timeoutValue" value="5000" disabled>
+                            <span>ms</span>
+                        </div>
                     </div>
+                    <button id="sendBtn" disabled>Send Message</button>
                 </div>
 
-                <div style="display: flex; gap: 10px">
-                    <button id="sendBtn" disabled style="flex: 1">Send Message</button>
-                    <button id="startTest" disabled style="flex: 1">Start Test</button>
-                    <button id="stopTest" disabled style="flex: 1">Stop Test</button>
+                <div class="tab-content" data-tab="peer">
+                    <div class="form-group">
+                        <label>MAC Address</label>
+                        <input type="text" id="macInput" placeholder="00:11:22:33:44:55">
+                    </div>
+                    <div class="form-group">
+                        <label>Virtual Address</label>
+                        <input type="text" id="addrInput" placeholder="0x02">
+                    </div>
+                    <button id="registerPeerBtn" disabled>Register Peer</button>
                 </div>
             </div>
-        </div>
 
-        <div class="card">
-            <h2>Received Messages</h2>
-            <div id="messageList" class="message-list"></div>
-        </div>
-
-        <div class="card">
-            <h2>Debug Log</h2>
-            <div id="log"></div>
+            <div class="card">
+                <div class="card-header">Event Log</div>
+                <div id="logArea" class="log-area"></div>
+            </div>
         </div>
     </div>
 
     <script src="event-msg.js"></script>
     <script src="ble-handler.js"></script>
     <script>
-        let bleHandler = new BleHandler();
-        let testRunning = false;
-        let startTime = 0;
-        let totalBytes = 0;
-        let messageCount = 0;
+        const bleHandler = new BleHandler();
+        let isConnected = false;
 
-        function formatTimestamp() {
-            return new Date().toLocaleTimeString('en-US', { 
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                fractionalSecondDigits: 3
+        // UI Elements
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusText = document.getElementById('statusText');
+        const startDiscoveryBtn = document.getElementById('startDiscoveryBtn');
+        const deviceList = document.getElementById('deviceList');
+        const macInput = document.getElementById('macInput');
+        const addrInput = document.getElementById('addrInput');
+        const registerPeerBtn = document.getElementById('registerPeerBtn');
+        const targetInput = document.getElementById('targetInput');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const logArea = document.getElementById('logArea');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+
+        // Tab handling
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.querySelector(`.tab-content[data-tab="${tabName}"]`).classList.add('active');
             });
+        });
+
+        function updateConnectionState(connected) {
+            isConnected = connected;
+            statusText.textContent = connected ? 'Connected' : 'Disconnected';
+            statusText.className = `status ${connected ? 'connected' : 'disconnected'}`;
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            startDiscoveryBtn.disabled = !connected;
+            registerPeerBtn.disabled = !connected;
+            sendBtn.disabled = !connected;
         }
 
-        function getSizeBadge(size) {
-            if (size < 100) return '<span class="size-badge size-small">' + size + 'B</span>';
-            if (size < 500) return '<span class="size-badge size-medium">' + size + 'B</span>';
-            return '<span class="size-badge size-large">' + size + 'B</span>';
-        }
-
-        function addMessageToList(name, data) {
-            const messageList = document.getElementById('messageList');
-            const size = new TextEncoder().encode(data).length;
-            const id = 'msg-' + Date.now();
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
             
-            const html = `
-                <div class="message-item">
-                    <div class="message-header" onclick="toggleMessage('${id}')">
-                        <span class="message-timestamp">${formatTimestamp()}</span>
-                        <span class="message-event">${name}</span>
-                        ${getSizeBadge(size)}
-                    </div>
-                    <div class="message-content" id="${id}">
-                        <pre>${data}</pre>
-                    </div>
-                </div>
+            const time = document.createElement('span');
+            time.className = 'log-time';
+            time.textContent = new Date().toLocaleTimeString();
+            
+            const msg = document.createElement('span');
+            msg.className = 'log-message';
+            msg.textContent = message;
+            
+            entry.appendChild(time);
+            entry.appendChild(msg);
+            logArea.appendChild(entry);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        connectBtn.onclick = async () => {
+            if (await bleHandler.connect()) {
+                updateConnectionState(true);
+                log('Connected to device');
+            } else {
+                log('Connection failed');
+            }
+        };
+
+        disconnectBtn.onclick = async () => {
+            await bleHandler.disconnect();
+            updateConnectionState(false);
+            log('Disconnected from device');
+        };
+
+        startDiscoveryBtn.onclick = () => {
+            deviceList.innerHTML = '';
+            bleHandler.startDiscovery();
+            log('Starting device discovery...');
+        };
+
+        clearLogBtn.onclick = () => {
+            logArea.innerHTML = '';
+        };
+
+        bleHandler.onDeviceDiscovered = (info) => {
+            log(`Discovered device: type=${info.type}, addr=${info.addr}`);
+            
+            const div = document.createElement('div');
+            div.className = 'device-item';
+            
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'device-info';
+            infoDiv.innerHTML = `
+                <span class="device-type">Device ${info.type}</span>
+                <span class="pill address">${info.addr}</span>
             `;
             
-            messageList.insertAdjacentHTML('afterbegin', html);
-        }
-
-        function toggleMessage(id) {
-            const content = document.getElementById(id);
-            content.classList.toggle('expanded');
-        }
-
-        function log(message, isDebug = false) {
-            const logDiv = document.getElementById('log');
-            const timestamp = formatTimestamp();
-            const prefix = isDebug ? 
-                `<span class="debug">[${timestamp}][DEBUG]</span> ` : 
-                `<span>[${timestamp}]</span> `;
+            const actionsDiv = document.createElement('div');
+            const connectBtn = document.createElement('button');
+            connectBtn.textContent = 'Connect';
+            connectBtn.className = 'secondary';
+            connectBtn.onclick = () => {
+                targetInput.value = info.addr;
+                log(`Selected device ${info.addr} as target`);
+            };
             
-            logDiv.innerHTML += prefix + message + '<br>';
-            
-            if (document.getElementById('autoScroll').checked) {
-                logDiv.scrollTop = logDiv.scrollHeight;
+            actionsDiv.appendChild(connectBtn);
+            div.appendChild(infoDiv);
+            div.appendChild(actionsDiv);
+            deviceList.appendChild(div);
+        };
+
+        registerPeerBtn.onclick = () => {
+            const mac = macInput.value;
+            const addr = parseInt(addrInput.value);
+            if (mac && !isNaN(addr)) {
+                bleHandler.registerPeer(mac, addr);
+                log(`Registering peer: MAC=${mac}, Addr=0x${addr.toString(16)}`);
+            } else {
+                log('Invalid MAC or address format');
             }
-        }
-
-        // Override console.log for debugging
-        const originalConsoleLog = console.log;
-        const originalConsoleError = console.error;
-        console.log = function() {
-            originalConsoleLog.apply(console, arguments);
-            const message = Array.from(arguments).join(' ');
-            log(message, true);
-        };
-        console.error = function() {
-            originalConsoleError.apply(console, arguments);
-            const message = Array.from(arguments).join(' ');
-            log(`<span class="error">${message}</span>`, true);
         };
 
-        function updateStats() {
-            const elapsedTime = (Date.now() - startTime) / 1000;
-            const throughput = totalBytes / (1024 * elapsedTime);
+        sendBtn.onclick = () => {
+            const target = parseInt(targetInput.value);
+            const message = messageInput.value;
+            if (!isNaN(target) && message) {
+                const options = {
+                    json: document.getElementById('jsonOption').checked,
+                    priority: document.getElementById('priorityOption').checked,
+                    timeout: document.getElementById('timeoutOption').checked ? 
+                            parseInt(document.getElementById('timeoutValue').value) : undefined
+                };
 
-            document.getElementById('msgCount').textContent = messageCount;
-            document.getElementById('bytesSent').textContent = totalBytes;
-            document.getElementById('throughput').textContent = throughput.toFixed(2);
-        }
-
-        async function runThroughputTest() {
-            if (!testRunning) return;
-
-            try {
-                const testData = "X".repeat(1500);
-                await bleHandler.sendMessage("TEST", testData, 0xFF, 0x00, 0x80);
-                totalBytes += testData.length;
-                messageCount++;
-                updateStats();
-                
-                if (testRunning) {
-                    requestAnimationFrame(runThroughputTest);
+                try {
+                    bleHandler.forwardToEspNow(message, target, options);
+                    log(`Sending to 0x${target.toString(16)}: ${message} (${
+                        Object.entries(options)
+                            .filter(([k, v]) => v)
+                            .map(([k]) => k)
+                            .join(', ') || 'no options'
+                    })`);
+                } catch (e) {
+                    log(`Failed to send message: ${e.message}`, 'error');
                 }
-            } catch (error) {
-                log('Error in throughput test: ' + error);
-                stopThroughputTest();
+            } else {
+                log('Invalid target address or empty message', 'error');
             }
-        }
+        };
 
-        async function startThroughputTest() {
-            document.getElementById('startTest').disabled = true;
-            document.getElementById('stopTest').disabled = false;
-            startTime = Date.now();
-            totalBytes = 0;
-            messageCount = 0;
-            testRunning = true;
-            runThroughputTest();
-        }
+        bleHandler.onStatusUpdate = (sender, status) => {
+            log(`Status update from 0x${sender.toString(16)}: ${status}`);
+        };
 
-        function stopThroughputTest() {
-            document.getElementById('startTest').disabled = false;
-            document.getElementById('stopTest').disabled = true;
-            testRunning = false;
-        }
+        bleHandler.onError = (error) => {
+            log(`Error: ${error}`, 'error');
+        };
 
-        async function connect() {
-            try {
-                log('Connecting to BLE device...');
-                const success = await bleHandler.connect();
-                if (!success) throw new Error('Connection failed');
-
-                bleHandler.onMessageReceived((name, data) => {
-                    addMessageToList(name, data);
-                    log(`Received Message:
-    Event: ${name}
-    Data: ${data}`);
-                });
-
-                log('Connected!');
-                document.getElementById('connectBtn').disabled = true;
-                document.getElementById('disconnectBtn').disabled = false;
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('startTest').disabled = false;
-
-            } catch (error) {
-                log('Error: ' + error);
+        bleHandler.onMessageSent = (msgId, success, target) => {
+            if (success) {
+                log(`Message ${msgId} delivered to 0x${target.toString(16)}`);
+            } else {
+                log(`Message ${msgId} failed to deliver to 0x${target.toString(16)}`, 'error');
             }
-        }
+        };
 
-        async function disconnect() {
-            await bleHandler.disconnect();
-            document.getElementById('connectBtn').disabled = false;
-            document.getElementById('disconnectBtn').disabled = true;
-            document.getElementById('sendBtn').disabled = true;
-            document.getElementById('startTest').disabled = true;
-            document.getElementById('stopTest').disabled = true;
-            log('Disconnected');
-        }
+        bleHandler.onPeerRegistered = (info) => {
+            log(`Peer registered - Address: 0x${info.addr.toString(16)}, MAC: ${info.mac}`);
+        };
 
-        document.getElementById('connectBtn').addEventListener('click', connect);
-        document.getElementById('disconnectBtn').addEventListener('click', disconnect);
-        document.getElementById('sendBtn').addEventListener('click', async () => {
-            const name = document.getElementById('eventName').value;
-            const data = document.getElementById('eventData').value;
-            const receiver = parseInt(document.getElementById('receiver').value, 16);
-            const group = parseInt(document.getElementById('group').value, 16);
-            const flags = parseInt(document.getElementById('flags').value, 16);
+        document.getElementById('timeoutOption').onchange = function() {
+            document.getElementById('timeoutValue').disabled = !this.checked;
+        };
 
-            await bleHandler.sendMessage(name, data, receiver, group, flags);
-            totalBytes += data.length;
-            messageCount++;
-            updateStats();
-        });
-        document.getElementById('startTest').addEventListener('click', startThroughputTest);
-        document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
-        document.getElementById('clearLogs').addEventListener('click', () => {
-            document.getElementById('log').innerHTML = '';
-            document.getElementById('messageList').innerHTML = '';
-        });
 
-        // Initialize settings
-        document.getElementById('writeWithResponse').addEventListener('change', (e) => {
-            bleHandler.setWriteWithResponse(e.target.checked);
-        });
+        // Initial state
+        updateConnectionState(false);
+
+        // Add styles for new elements
+        const style = document.createElement('style');
+        style.textContent = `
+            .options {
+                background: var(--light-bg);
+                padding: 15px;
+                border-radius: 4px;
+                margin-bottom: 20px;
+            }
+            
+            .checkbox-group {
+                display: flex;
+                gap: 20px;
+                margin-bottom: 10px;
+            }
+            
+            .checkbox-group label {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--gray);
+                cursor: pointer;
+            }
+            
+            .timeout-group {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .timeout-group input[type="number"] {
+                width: 100px;
+                margin: 0;
+            }
+            
+            .timeout-group span {
+                color: var(--gray);
+            }
+            
+            .log-entry.error .log-message {
+                color: var(--error);
+            }
+            
+            .device-item.timeout {
+                opacity: 0.5;
+                background: var(--gray);
+            }
+        `;
+        document.head.appendChild(style);
+
     </script>
 </body>
 </html>

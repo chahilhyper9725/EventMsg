@@ -1,37 +1,21 @@
-// Control characters
-const SOH = 0x01;
-const STX = 0x02;
-const US = 0x1F;
-const EOT = 0x04;
-const ESC = 0x1B;
-
 class EventMsg {
     constructor() {
-        this.resetState();
         this.localAddr = 0x00;
         this.groupAddr = 0x00;
-        this.writeCallback = null;
-        this.eventCallback = null;
-        this.receiverId = 0x00;
-        this.groupId = 0x00;
         this.msgIdCounter = 0;
+        this.writeCallback = null;
+        this.dispatchers = [];
+
+        // Control characters
+        this.SOH = 0x01;  // Start of Header
+        this.STX = 0x02;  // Start of Text
+        this.US = 0x1F;   // Unit Separator
+        this.EOT = 0x04;  // End of Transmission
+        this.ESC = 0x1B;  // Escape Character
     }
 
-    resetState() {
-        this.state = 'WAITING_FOR_SOH';
-        this.headerBuffer = new Uint8Array(6);
-        this.eventNameBuffer = new Uint8Array(32);
-        this.eventDataBuffer = new Uint8Array(2*1024);
-        this.currentBuffer = null;
-        this.currentMaxLength = 0;
-        this.bufferPos = 0;
-        this.escapedMode = false;
-        console.log('State machine reset');
-    }
-
-    init(writeCallback) {
-        this.writeCallback = writeCallback;
-        this.resetState();
+    init(callback) {
+        this.writeCallback = callback;
         return true;
     }
 
@@ -43,178 +27,297 @@ class EventMsg {
         this.groupAddr = addr;
     }
 
-    onEvent(callback, recvId, grpId) {
-        this.eventCallback = callback;
-        this.receiverId = recvId;
-        this.groupId = grpId;
+    onEvent(callback, recvId = 0xFF, grpId = 0x00) {
+        this.dispatchers.push({
+            callback,
+            receiverId: recvId,
+            groupId: grpId
+        });
     }
 
-    byteStuff(input) {
-        const controlChars = [SOH, STX, US, EOT, ESC];
-        const output = [];
-
-        for (const byte of input) {
+    byteStuff(data) {
+        const result = [];
+        const controlChars = [this.SOH, this.STX, this.US, this.EOT, this.ESC];
+        
+        for (const byte of data) {
             if (controlChars.includes(byte)) {
-                output.push(ESC);
-                output.push(byte ^ 0x20);
+                result.push(this.ESC, byte ^ 0x20);
             } else {
-                output.push(byte);
+                result.push(byte);
             }
         }
-
-        return new Uint8Array(output);
+        return new Uint8Array(result);
     }
 
-    send(name, data, recvAddr, groupAddr, flags) {
-        // Create header with byte stuffing
-        const header = new Uint8Array([
+    async send(name, data, recvAddr, groupAddr, flags = 0) {
+        const msgBuf = [];
+        
+        // Start message
+        msgBuf.push(this.SOH);
+
+        // Header
+        const header = this.byteStuff(new Uint8Array([
             this.localAddr,
             recvAddr,
             groupAddr,
             flags,
             (this.msgIdCounter >> 8) & 0xFF,
             this.msgIdCounter & 0xFF
-        ]);
+        ]));
         this.msgIdCounter++;
 
-        const stuffedHeader = this.byteStuff(header);
+        msgBuf.push(...header);
+        msgBuf.push(this.STX);
 
-        // Convert and stuff event name & data
-        const encoder = new TextEncoder();
-        const nameBytes = this.byteStuff(encoder.encode(name));
-        const dataBytes = this.byteStuff(encoder.encode(data));
+        // Event name
+        const nameBytes = this.byteStuff(new TextEncoder().encode(name));
+        msgBuf.push(...nameBytes);
+        msgBuf.push(this.US);
 
-        // Build complete message
-        const message = new Uint8Array([
-            SOH,
-            ...stuffedHeader,
-            STX,
-            ...nameBytes,
-            US,
-            ...dataBytes,
-            EOT
-        ]);
+        // Event data
+        const dataBytes = this.byteStuff(new TextEncoder().encode(data));
+        msgBuf.push(...dataBytes);
+        msgBuf.push(this.EOT);
 
-        const hexMessage = Array.from(message).map(b => b.toString(16).padStart(2, '0')).join(' ');
-        console.log('Sending message:', hexMessage);
-
+        const message = new Uint8Array(msgBuf);
         if (this.writeCallback) {
-            return this.writeCallback(message);
+            return await this.writeCallback(message);
         }
-        return 0;
-    }
-
-    processNextByte(byte) {
-        // Handle escape sequences
-        if (this.escapedMode) {
-            byte ^= 0x20;
-            this.escapedMode = false;
-            //console.log('Escaped byte:', byte.toString(16).padStart(2, '0'));
-        } else if (byte === ESC) {
-            this.escapedMode = true;
-            //console.log('Found escape character');
-            return true;
-        }
-
-        // Debug state and byte
-        const hexByte = byte.toString(16).padStart(2, '0');
-        // //console.log(`State: ${this.state}, Processing byte: 0x${hexByte}`);
-
-        // Process based on current state
-        switch (this.state) {
-            case 'WAITING_FOR_SOH':
-                if (byte === SOH) {
-                    console.log('Found SOH, switching to READING_HEADER');
-                    this.state = 'READING_HEADER';
-                    this.currentBuffer = this.headerBuffer;
-                    this.currentMaxLength = 6;
-                    this.bufferPos = 0;
-                }
-                break;
-
-            case 'READING_HEADER':
-                this.currentBuffer[this.bufferPos++] = byte;
-                if (this.bufferPos === this.currentMaxLength) {
-                    const headerHex = Array.from(this.headerBuffer).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                    console.log('Header complete:', headerHex);
-                    this.state = 'WAITING_FOR_STX';
-                }
-                break;
-
-            case 'WAITING_FOR_STX':
-                if (byte === STX) {
-                    console.log('Found STX, switching to READING_EVENT_NAME');
-                    this.state = 'READING_EVENT_NAME';
-                    this.currentBuffer = this.eventNameBuffer;
-                    this.currentMaxLength = this.eventNameBuffer.length;
-                    this.bufferPos = 0;
-                } else {
-                    console.error('Invalid sequence: Expected STX');
-                    return false;
-                }
-                break;
-
-            case 'READING_EVENT_NAME':
-                if (byte === US) {
-                    const nameBytes = this.eventNameBuffer.slice(0, this.bufferPos);
-                    const eventName = new TextDecoder().decode(nameBytes);
-                    console.log('Found US, event name:', eventName);
-                    this.state = 'READING_EVENT_DATA';
-                    this.currentBuffer = this.eventDataBuffer;
-                    this.currentMaxLength = this.eventDataBuffer.length;
-                    this.bufferPos = 0;
-                } else {
-                    if (this.bufferPos >= this.currentMaxLength) {
-                        console.error('Event name too long');
-                        return false;
-                    }
-                    this.currentBuffer[this.bufferPos++] = byte;
-                }
-                break;
-
-            case 'READING_EVENT_DATA':
-                if (byte === EOT) {
-                    console.log('Found EOT, message complete');
-                    const decoder = new TextDecoder();
-                    const receiver = this.headerBuffer[1];
-                    const group = this.headerBuffer[2];
-
-                    if ((receiver === this.localAddr || receiver === 0xFF) &&
-                        (group === this.groupAddr || group === 0)) {
-                        if (this.eventCallback) {
-                            const eventName = decoder.decode(this.eventNameBuffer.slice(0, this.bufferPos));
-                            const eventData = decoder.decode(this.eventDataBuffer.slice(0, this.bufferPos));
-                            console.log('Emitting event:', eventName.trim(), 'Data:', eventData.trim());
-                            this.eventCallback(eventName.trim(), eventData.trim());
-                        }
-                    } else {
-                        console.log('Message filtered out - wrong receiver/group');
-                    }
-
-                    // Reset for next message
-                    this.resetState();
-                } else {
-                    if (this.bufferPos >= this.currentMaxLength) {
-                        console.error('Data too long');
-                        return false;
-                    }
-                    this.currentBuffer[this.bufferPos++] = byte;
-                }
-                break;
-        }
-
-        return true;
+        return false;
     }
 
     process(data) {
-        // console.log('Processing chunk:', Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' '));
+        let state = 'WAITING_FOR_SOH';
+        let escapedMode = false;
+        let headerBuf = [];
+        let nameBuf = [];
+        let dataBuf = [];
+        let currentBuf = null;
+
         for (let i = 0; i < data.length; i++) {
-            if (!this.processNextByte(data[i])) {
-                console.error('Failed to process byte at position', i);
-                this.resetState();
-                return false;
+            let byte = data[i];
+
+            if (escapedMode) {
+                byte ^= 0x20;
+                escapedMode = false;
+            } else if (byte === this.ESC) {
+                escapedMode = true;
+                continue;
+            }
+
+            switch (state) {
+                case 'WAITING_FOR_SOH':
+                    if (byte === this.SOH) {
+                        state = 'READING_HEADER';
+                        currentBuf = headerBuf;
+                    }
+                    break;
+
+                case 'READING_HEADER':
+                    currentBuf.push(byte);
+                    if (currentBuf.length === 6) {
+                        state = 'WAITING_FOR_STX';
+                    }
+                    break;
+
+                case 'WAITING_FOR_STX':
+                    if (byte === this.STX) {
+                        state = 'READING_EVENT_NAME';
+                        currentBuf = nameBuf;
+                    }
+                    break;
+
+                case 'READING_EVENT_NAME':
+                    if (byte === this.US) {
+                        state = 'READING_EVENT_DATA';
+                        currentBuf = dataBuf;
+                    } else {
+                        currentBuf.push(byte);
+                    }
+                    break;
+
+                case 'READING_EVENT_DATA':
+                    if (byte === this.EOT) {
+                        const header = new Uint8Array(headerBuf);
+                        const name = new TextDecoder().decode(new Uint8Array(nameBuf));
+                        const eventData = new TextDecoder().decode(new Uint8Array(dataBuf));
+                        
+                        for (const dispatcher of this.dispatchers) {
+                            if ((header[1] === dispatcher.receiverId || header[1] === 0xFF) &&
+                                (header[2] === dispatcher.groupId || header[2] === 0)) {
+                                dispatcher.callback(name, eventData, header, header[0], header[1]);
+                            }
+                        }
+
+                        // Reset
+                        state = 'WAITING_FOR_SOH';
+                        headerBuf = [];
+                        nameBuf = [];
+                        dataBuf = [];
+                        currentBuf = null;
+                    } else {
+                        currentBuf.push(byte);
+                    }
+                    break;
             }
         }
-        return true;
+    }
+}
+
+class EventMsgUtils {
+    constructor(eventMsg) {
+        this.eventMsg = eventMsg;
+        this.handlers = [];
+        this.rawHandlers = [];
+
+        // Set up master dispatcher
+        this.eventMsg.onEvent((name, data, header, sender, receiver) => {
+            this.dispatchEvent(name, data, header, sender, receiver);
+        }, 0xFF, 0x00);
+    }
+
+    on(eventName = null) {
+        return new EventHandlerBuilder(this, eventName);
+    }
+
+    onRaw() {
+        return new RawEventHandlerBuilder(this);
+    }
+
+    registerHandler(config, callback) {
+        this.handlers.push({config, callback});
+    }
+
+    registerRawHandler(config, callback) {
+        this.rawHandlers.push({config, callback});
+    }
+
+    dispatchEvent(name, data, header, sender, receiver) {
+        // First dispatch to raw handlers
+        for (const {config, callback} of this.rawHandlers) {
+            let matches = true;
+
+            if (config.hasSenderFilter && 
+                config.senderFilter !== header[0] && 
+                config.senderFilter !== 0xFF) {
+                matches = false;
+            }
+
+            if (matches && config.hasGroupFilter && 
+                config.groupFilter !== header[2] && 
+                config.groupFilter !== 0x00) {
+                matches = false;
+            }
+
+            if (matches && config.hasFlagsFilter && 
+                config.flagsFilter !== header[3]) {
+                matches = false;
+            }
+
+            if (matches) {
+                // Calculate message length and get raw data
+                const totalLen = header.length + name.length + 1 + data.length + 3;
+                callback(header.buffer, totalLen);
+            }
+        }
+
+        // Then dispatch to processed handlers
+        for (const {config, callback} of this.handlers) {
+            if (config.eventName && config.eventName !== name) {
+                continue;
+            }
+
+            if (config.hasSenderFilter && 
+                config.senderFilter !== header[0] && 
+                config.senderFilter !== 0xFF) {
+                continue;
+            }
+
+            if (config.hasGroupFilter && 
+                config.groupFilter !== header[2] && 
+                config.groupFilter !== 0x00) {
+                continue;
+            }
+
+            if (config.hasFlagsFilter && 
+                config.flagsFilter !== header[3]) {
+                continue;
+            }
+
+            callback(data, header, sender);
+        }
+    }
+}
+
+class HandlerConfig {
+    constructor() {
+        this.eventName = null;
+        this.senderFilter = 0xFF;
+        this.groupFilter = 0x00;
+        this.flagsFilter = 0x00;
+        this.hasSenderFilter = false;
+        this.hasGroupFilter = false;
+        this.hasFlagsFilter = false;
+    }
+}
+
+class EventHandlerBuilder {
+    constructor(utils, eventName) {
+        this.utils = utils;
+        this.config = new HandlerConfig();
+        if (eventName) {
+            this.config.eventName = eventName;
+        }
+    }
+
+    from(sender) {
+        this.config.senderFilter = sender;
+        this.config.hasSenderFilter = true;
+        return this;
+    }
+
+    group(groupId) {
+        this.config.groupFilter = groupId;
+        this.config.hasGroupFilter = true;
+        return this;
+    }
+
+    withFlags(flags) {
+        this.config.flagsFilter = flags;
+        this.config.hasFlagsFilter = true;
+        return this;
+    }
+
+    handle(callback) {
+        this.utils.registerHandler(this.config, callback);
+    }
+}
+
+class RawEventHandlerBuilder {
+    constructor(utils) {
+        this.utils = utils;
+        this.config = new HandlerConfig();
+    }
+
+    from(sender) {
+        this.config.senderFilter = sender;
+        this.config.hasSenderFilter = true;
+        return this;
+    }
+
+    group(groupId) {
+        this.config.groupFilter = groupId;
+        this.config.hasGroupFilter = true;
+        return this;
+    }
+
+    withFlags(flags) {
+        this.config.flagsFilter = flags;
+        this.config.hasFlagsFilter = true;
+        return this;
+    }
+
+    handle(callback) {
+        this.utils.registerRawHandler(this.config, callback);
     }
 }
