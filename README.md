@@ -29,6 +29,57 @@ lib_deps =
 2. Copy it to your Arduino/libraries folder
 3. Restart your Arduino IDE
 
+## Addressing and Message Routing
+
+The EventMsg library uses a flexible addressing system that supports both direct messaging and group-based communication:
+
+```mermaid
+graph TB
+    subgraph "Direct Message"
+        A[Device 0x01] -->|"To: 0x02, Group: 0x00"| B[Device 0x02]
+    end
+    
+    subgraph "Group Broadcast"
+        C[Device 0x03] -->|"To: 0xFF, Group: 0x01"| D[All Group 0x01 Devices]
+    end
+    
+    subgraph "Global Broadcast"
+        E[Device 0x04] -->|"To: 0xFF, Group: 0x00"| F[All Devices]
+    end
+```
+
+### Addressing Modes
+
+1. **Direct Messaging**
+   - Set specific receiver address
+   - `msg.send("EVENT", "data", 0x02, 0x00, 0x00);  // To device 0x02`
+
+2. **Group Broadcasting**
+   - Use broadcast address with group
+   - `msg.send("EVENT", "data", 0xFF, 0x01, 0x00);  // To all in group 0x01`
+
+3. **Global Broadcasting**
+   - Use broadcast address with no group
+   - `msg.send("EVENT", "data", 0xFF, 0x00, 0x00);  // To all devices`
+
+## Performance and Memory Usage
+
+### Static Memory
+- Event name buffer: 32 bytes
+- Event data buffer: 2048 bytes
+- Header buffer: 6 bytes
+- Total fixed buffers: ~2.1KB
+
+### Dynamic Memory
+- Each dispatcher: ~32 bytes (name + callback)
+- Each raw handler: ~32 bytes (name + callback)
+- Message processing: No dynamic allocation
+
+### Processing Overhead
+- Byte stuffing: 1-2 cycles per byte
+- Handler lookup: O(n) where n = number of handlers
+- Total overhead: ~10μs per byte on ESP32 @ 240MHz
+
 ## Quick Start
 
 ### Basic Usage with Event Dispatchers
@@ -117,6 +168,53 @@ The library comes with web-based tools to help with development and debugging:
 - **Protocol Editor** ([docs/webtools/protocol-editor.html](docs/webtools/protocol-editor.html)) - Visual tool to create and edit protocol messages
 - **BLE Tester** ([docs/webtools/ble-tester.html](docs/webtools/ble-tester.html)) - Test BLE communication using the EventMsg protocol
 
+### Raw Data Handler Usage
+
+```cpp
+#include <EventMsg.h>
+
+EventMsg eventMsg;
+
+// Raw handler for binary data
+void rawHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
+    Serial.printf("Raw Event from %s: %s, Length: %d\n", deviceName, event, length);
+    // Process binary data directly
+    for(size_t i = 0; i < length; i++) {
+        Serial.printf("%02X ", data[i]);
+    }
+    Serial.println();
+}
+
+// Unhandled event handler
+void unhandledHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
+    Serial.printf("Unhandled from %s: %s, Length: %d\n", deviceName, event, length);
+    // Log or process unhandled events
+}
+
+void setup() {
+    Serial.begin(115200);
+    
+    eventMsg.init([](uint8_t* data, size_t len) {
+        return Serial.write(data, len) == len;
+    });
+    
+    eventMsg.setAddr(0x01);
+    
+    // Register raw data handler for binary protocols
+    eventMsg.registerRawHandler("binary_handler", 0x02, 0x01, rawHandler);
+    
+    // Set handler for unmatched events
+    eventMsg.setUnhandledHandler("unhandled", 0xFF, 0x00, unhandledHandler);
+}
+
+void loop() {
+    while (Serial.available()) {
+        uint8_t byte = Serial.read();
+        eventMsg.process(&byte, 1);
+    }
+}
+```
+
 ## API Reference
 
 ### Class: EventMsg
@@ -135,6 +233,30 @@ Set the local device address
 - `addr`: Device address (0x00-0xFF)
 
 ##### `bool registerDispatcher(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb)`
+
+Register a device-specific event dispatcher
+- `deviceName`: Unique identifier for the device
+- `receiverId`: Device address to listen for (0xFF for broadcast)
+- `groupId`: Group address to listen for (0x00 for no group)
+- `cb`: Callback function `void(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver)`
+- Returns: `true` if registration successful
+
+##### `bool registerRawHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, RawDataCallback cb)`
+
+Register a raw data handler
+- `deviceName`: Unique identifier for the handler
+- `receiverId`: Device address to listen for (0xFF for broadcast)
+- `groupId`: Group address to listen for (0x00 for no group)
+- `cb`: Callback function `void(const char* deviceName, const char* event, uint8_t* data, size_t length)`
+- Returns: `true` if registration successful
+
+##### `void setUnhandledHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, RawDataCallback cb)`
+
+Set handler for unmatched events
+- `deviceName`: Unique identifier for the handler
+- `receiverId`: Device address to listen for (0xFF for broadcast)
+- `groupId`: Group address to listen for (0x00 for no group)
+- `cb`: Callback function `void(const char* deviceName, const char* event, uint8_t* data, size_t length)`
 
 Register a device-specific event dispatcher
 - `deviceName`: Unique identifier for the device

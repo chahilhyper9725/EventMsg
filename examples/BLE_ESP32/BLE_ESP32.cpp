@@ -4,6 +4,23 @@
 #include <NimBLEServer.h>
 #include <NimBLEUtils.h>
 
+#define DEVICEBROADCAST 0xFF
+#define DEVICE00 0x00
+#define DEVICE01 0x01
+#define DEVICE02 0x02
+#define DEVICE03 0x03
+#define DEVICE04 0x04
+#define DEVICE05 0x05
+#define DEVICE06 0x06
+
+#define GROUP00 0x00
+#define GROUP01 0x01
+#define GROUP02 0x02
+#define GROUP03 0x03
+#define GROUP04 0x04
+#define GROUP05 0x05
+#define GROUP06 0x06
+
 // Nordic UART Service
 #define SERVICE_UUID "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -43,10 +60,11 @@ class CharacteristicCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 // Handler for mobile app messages
-void mobileAppHandler(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== Mobile App Message ===\n");
+void mobileAppHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
+    Serial.printf("=== Mobile App Message from %s ===\n", deviceName);
     Serial.printf("Event: %s\n", event);
     Serial.printf("Data Length: %d bytes\n", strlen(data));
+    Serial.printf("Data: %s\n", data);
     Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
     
     // Handle specific events
@@ -61,10 +79,11 @@ void mobileAppHandler(const char* event, const char* data, uint8_t* header, uint
 }
 
 // Handler for ESP-NOW messages
-void espNowHandler(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== ESP-NOW Message ===\n");
+void espNowHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
+    Serial.printf("=== ESP-NOW Message from %s ===\n", deviceName);
     Serial.printf("Event: %s\n", event);
     Serial.printf("Data Length: %d bytes\n", strlen(data));
+    Serial.printf("Data: %s\n", data);
     Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
     
     // Handle specific events
@@ -76,6 +95,26 @@ void espNowHandler(const char* event, const char* data, uint8_t* header, uint8_t
         Serial.println("Node status update received");
         // Process node status
     }
+}
+
+// Raw data handler
+void rawDataHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
+    Serial.printf("=== Raw Data from %s ===\n", deviceName);
+    Serial.printf("Event: %s\n", event);
+    Serial.printf("Length: %d bytes\n", length);
+    Serial.print("Data (hex): ");
+    for(size_t i = 0; i < length; i++) {
+        Serial.printf("%02X ", data[i]);
+    }
+    Serial.println();
+}
+
+// Unhandled event handler with same signature as dispatchers
+void unhandledHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
+    Serial.printf("=== Unhandled Event from %s ===\n", deviceName);
+    Serial.printf("Event: %s\n", event);
+    Serial.printf("Data: %s\n", data);
+    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
 }
 
 void setup() {
@@ -133,9 +172,22 @@ void setup() {
     msg.setAddr(0x01);
     msg.setGroup(0x00);
 
-    // Register handlers for different message types
-    msg.registerDispatcher("mobile_app", 0x01, 0x00, mobileAppHandler);  // Mobile app messages
-    msg.registerDispatcher("esp_now", 0xFF, 0x00, espNowHandler);       // ESP-NOW broadcasts
+    // Register event dispatchers
+    msg.registerDispatcher("mobile_app", DEVICE01, GROUP00, mobileAppHandler);  // Mobile app messages
+    msg.registerDispatcher("esp_now", DEVICEBROADCAST, GROUP00, espNowHandler); // ESP-NOW broadcasts
+    msg.registerDispatcher("esp_now2", DEVICE05, GROUP01, espNowHandler);       // Group 1 messages
+    msg.registerDispatcher("esp_now3", DEVICE06, GROUP01, espNowHandler);       // Group 1 messages
+
+    // Register raw handlers for monitoring
+    msg.registerRawHandler("raw_monitor", DEVICEBROADCAST, GROUP00, rawDataHandler); // Monitor all messages
+    
+    // Set handler for unmatched events
+    msg.setUnhandledHandler("unhandled", DEVICEBROADCAST, GROUP00, unhandledHandler);
+
+    // Test messages
+    msg.send("test_direct", "Hello Device 1", 0x01, 0x00, 0x00);  // Direct message
+    msg.send("test_group", "Hello Group 1", 0xFF, 0x01, 0x00);    // Group message
+    msg.send("test_broadcast", "Hello All", 0xFF, 0x00, 0x00);    // Broadcast
 }
 
 void loop() {

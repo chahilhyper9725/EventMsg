@@ -29,32 +29,111 @@ The EventMsg protocol uses the following frame format:
 - **Flags** (1 byte): Message flags
 - **Message ID** (2 bytes): Sequential message identifier (Big-endian)
 
-## Event Dispatcher System
+## Event Handler System
 
-The EventMsg library implements a device-based dispatcher system that routes messages based on receiver and group addresses.
+The EventMsg library implements two types of handlers:
 
-### Dispatcher Registration
+### 1. Event Dispatchers
+- Device-based dispatchers that process formatted event data
+- Each dispatcher registers with:
+  - Device name (string identifier)
+  - Receiver ID (address to listen for)
+  - Group ID (group to listen for)
+  - Callback function receiving:
+    - Device name
+    - Event name
+    - Event data (as string)
+    - Header buffer
+    - Sender address
+    - Receiver address
 
-Each dispatcher is registered with:
-- Device name (string identifier)
-- Receiver ID (address to listen for)
-- Group ID (group to listen for)
-- Callback function receiving:
-  - Event name
-  - Event data
-  - Header buffer
-  - Sender address
-  - Receiver address
+### 2. Raw Data Handlers
+- Handlers that receive raw, unprocessed message data
+- Each raw handler registers with:
+  - Device name (string identifier)
+  - Receiver ID (address to listen for)
+  - Group ID (group to listen for)
+  - Callback function receiving:
+    - Device name (string identifier)
+    - Event name (string)
+    - Raw data buffer (byte array)
+    - Data length (size_t)
+
+### 3. Unhandled Event Handler
+- Special handler for events not processed by any dispatcher
+- Registers like a raw handler with:
+  - Device name
+  - Receiver ID
+  - Group ID
+  - Callback for unmatched events
 
 ### Message Routing
 
-Messages are routed to dispatchers based on:
-1. Exact receiver ID match
-2. Broadcast address (0xFF) match
-3. Group ID match
-4. No group (0x00) match
+Messages are routed through a priority-based filtering system:
 
-Multiple dispatchers may receive the same message if their filters match.
+```mermaid
+flowchart TD
+    M[Incoming Message] --> A{Receiver Match?}
+    A -->|Yes| B{Group Match?}
+    A -->|No| C{Is Broadcast?}
+    C -->|Yes| B
+    C -->|No| D[Drop Message]
+    B -->|Yes| E[Process Message]
+    B -->|No| F{Group is 0?}
+    F -->|Yes| E
+    F -->|No| D
+```
+
+1. **Direct Message Routing**
+```mermaid
+graph LR
+    A[Device 0x01] -->|Event: PING| B[Device 0x02]
+    B -->|"✓ Matches ID"| C[Handler]
+```
+
+2. **Group Message Routing**
+```mermaid
+graph LR
+    A[Device 0x01] -->|"To: 0xFF, Group: 0x01"| B[Network]
+    B --> C[Device 0x02<br>Group 0x01]
+    B --> D[Device 0x03<br>Group 0x01]
+    B -.->|"✗ Wrong Group"| E[Device 0x04<br>Group 0x02]
+```
+
+3. **Global Broadcast**
+```mermaid
+graph LR
+    A[Device 0x01] -->|"To: 0xFF, Group: 0x00"| B[Network]
+    B --> C[All Devices]
+```
+
+### Handler Execution Sequence
+
+```mermaid
+sequenceDiagram
+    participant M as Message
+    participant R as Raw Handlers
+    participant D as Dispatchers
+    participant U as Unhandled
+    
+    M->>R: Process Raw Data
+    loop For each matching handler
+        R->>R: Call Raw Handler
+    end
+    M->>D: Process Event Data
+    loop For each matching dispatcher
+        D->>D: Call Dispatcher
+    end
+    alt No dispatchers handled
+        M->>U: Call Unhandled Handler
+    end
+```
+
+Messages may be processed by multiple handlers if their filters match. The processing sequence is:
+
+1. Raw Data Handlers (can inspect/modify raw data)
+2. Event Dispatchers (process formatted string data)
+3. Unhandled Event Handler (if no dispatcher handled the event)
 
 ## Byte Stuffing
 

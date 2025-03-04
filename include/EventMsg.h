@@ -33,7 +33,17 @@ using namespace std;
 using WriteCallback = std::function<bool(uint8_t*, size_t)>;
 
 // Function type for event handling with full context
-using EventDispatcherCallback = std::function<void(const char*, const char*, uint8_t*, uint8_t, uint8_t)>;
+using EventDispatcherCallback = std::function<void(const char*, const char*, const char*, uint8_t*, uint8_t, uint8_t)>;
+// Function type for raw data handling
+using RawDataCallback = std::function<void(const char*,const char*, uint8_t*, size_t)>;
+
+// Structure to hold raw data handler information
+struct RawDataHandler {
+    std::string deviceName;
+    uint8_t receiverId;
+    uint8_t groupId;
+    RawDataCallback callback;
+};
 
 // Structure to hold dispatcher information
 struct EventDispatcher {
@@ -62,6 +72,8 @@ private:
     uint16_t msgIdCounter;
     WriteCallback writeCallback;
     std::vector<EventDispatcher> dispatchers;
+    std::vector<RawDataHandler> rawHandlers;
+    EventDispatcher* unhandledHandler;
 
     // State machine buffers and tracking
     ProcessState state;
@@ -93,6 +105,11 @@ public:
     bool process(uint8_t* data, size_t len);
     
     // Event registration
+    bool registerRawHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, RawDataCallback cb);
+    bool unregisterRawHandler(const char* deviceName);
+    void setUnhandledHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb);
+    
+    // Dispatcher registration
     bool registerDispatcher(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb);
     bool unregisterDispatcher(const char* deviceName);
 };
