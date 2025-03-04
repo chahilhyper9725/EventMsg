@@ -145,23 +145,30 @@
             display: block;
         }
 
-        .size-badge {
+        .badge {
             padding: 2px 8px;
             border-radius: 12px;
             font-size: 12px;
             color: white;
+            margin-left: 4px;
         }
 
-        .size-small {
-            background: #4caf50;
-        }
+        .badge-size-small { background: #4caf50; }
+        .badge-size-medium { background: #2196f3; }
+        .badge-size-large { background: #9c27b0; }
+        
+        .badge-receiver { background: #ff9800; }
+        .badge-group { background: #9c27b0; }
+        .badge-flags { background: #607d8b; }
+        .badge-id { background: #795548; }
 
-        .size-medium {
-            background: #2196f3;
-        }
-
-        .size-large {
-            background: #9c27b0;
+        .metadata {
+            margin-top: 8px;
+            font-family: monospace;
+            color: #666;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
         }
 
         .switch {
@@ -354,12 +361,12 @@
         }
 
         function getSizeBadge(size) {
-            if (size < 100) return '<span class="size-badge size-small">' + size + 'B</span>';
-            if (size < 500) return '<span class="size-badge size-medium">' + size + 'B</span>';
-            return '<span class="size-badge size-large">' + size + 'B</span>';
+            if (size < 100) return '<span class="badge badge-size-small">' + size + 'B</span>';
+            if (size < 500) return '<span class="badge badge-size-medium">' + size + 'B</span>';
+            return '<span class="badge badge-size-large">' + size + 'B</span>';
         }
 
-        function addMessageToList(name, data) {
+        function addMessageToList(name, data, metadata) {
             const messageList = document.getElementById('messageList');
             const size = new TextEncoder().encode(data).length;
             const id = 'msg-' + Date.now();
@@ -370,9 +377,19 @@
                         <span class="message-timestamp">${formatTimestamp()}</span>
                         <span class="message-event">${name}</span>
                         ${getSizeBadge(size)}
+                        <span class="badge badge-receiver">R:${metadata.receiver.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-group">G:${metadata.group.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-flags">F:${metadata.flags.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-id">ID:${metadata.messageId.toString(16).toUpperCase()}</span>
                     </div>
                     <div class="message-content" id="${id}">
                         <pre>${data}</pre>
+                        <div class="metadata">
+                            <div>Receiver: 0x${metadata.receiver.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Group: 0x${metadata.group.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Flags: 0x${metadata.flags.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Message ID: 0x${metadata.messageId.toString(16).padStart(4,'0').toUpperCase()}</div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -463,11 +480,12 @@
                 const success = await bleHandler.connect();
                 if (!success) throw new Error('Connection failed');
 
-                bleHandler.onMessageReceived((name, data) => {
-                    addMessageToList(name, data);
+                bleHandler.onMessageReceived((name, data, metadata) => {
+                    addMessageToList(name, data, metadata);
                     log(`Received Message:
     Event: ${name}
-    Data: ${data}`);
+    Data: ${data}
+    Metadata: ${JSON.stringify(metadata, null, 2)}`);
                 });
 
                 log('Connected!');

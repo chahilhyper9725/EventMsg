@@ -184,8 +184,14 @@ class EventMsg {
                         if (this.eventCallback) {
                             const eventName = decoder.decode(this.eventNameBuffer.slice(0, this.bufferPos));
                             const eventData = decoder.decode(this.eventDataBuffer.slice(0, this.bufferPos));
-                            console.log('Emitting event:', eventName.trim(), 'Data:', eventData.trim());
-                            this.eventCallback(eventName.trim(), eventData.trim());
+                            const metadata = {
+                                receiver: this.headerBuffer[1],
+                                group: this.headerBuffer[2],
+                                flags: this.headerBuffer[3],
+                                messageId: (this.headerBuffer[4] << 8) | this.headerBuffer[5]
+                            };
+                            console.log('Emitting event:', eventName.trim(), 'Data:', eventData.trim(), 'Metadata:', metadata);
+                            this.eventCallback(eventName.trim(), eventData.trim(), metadata);
                         }
                     } else {
                         console.log('Message filtered out - wrong receiver/group');

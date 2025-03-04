@@ -88,7 +88,9 @@ class BleHandler {
     }
 
     onMessageReceived(callback) {
-        this.eventMsg.onEvent(callback, 0xFF, 0x00);
+        this.eventMsg.onEvent((name, data, metadata) => {
+            callback(name, data, metadata);
+        }, 0xFF, 0x00);
     }
 
     async sendMessage(name, data, receiver, group, flags) {
