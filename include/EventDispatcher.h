@@ -8,11 +8,10 @@
 class EventDispatcher {
 public:
     // Callback type for individual events with device name
-    using EventCallback = std::function<void(const char* deviceName, const char* eventName, const char* data, EventHeader& header)>;
+    using EventCallback = std::function<void( const char* data, EventHeader& header)>;
     
     // Constructor sets local address and device name
-    EventDispatcher(const char* devName, uint8_t localAddr = 0x00) 
-        : deviceName(devName), localAddress(localAddr) {}
+    EventDispatcher(uint8_t localAddr = 0x00) : localAddress(localAddr)  {}
     
     // Register event handler
     void on(const char* eventName, EventCallback callback) {
@@ -23,7 +22,7 @@ public:
     void dispatchEvent(const char* eventName, const char* data, EventHeader& header) {
         auto it = handlers.find(eventName);
         if (it != handlers.end()) {
-            it->second(deviceName.c_str(), eventName, data, header);
+            it->second( data, header);
         }
     }
     
@@ -59,12 +58,12 @@ public:
     void setLocalAddress(uint8_t addr) { localAddress = addr; }
     
     // Get device name
-    const char* getDeviceName() const { return deviceName.c_str(); }
+    // const char* getDeviceName() const { return deviceName.c_str(); }
 
 private:
     std::map<std::string, EventCallback> handlers;
     uint8_t localAddress;
-    std::string deviceName;
+    // std::string deviceName;
 };
 
 #endif // EVENT_DISPATCHER_H

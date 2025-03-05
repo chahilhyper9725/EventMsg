@@ -204,6 +204,37 @@ void EventMsg::resetState() {
     memset(eventDataBuffer, 0, sizeof(eventDataBuffer));
 }
 
+void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size_t length, EventHeader& header) {
+    bool eventHandled = false;
+
+    // Process raw handlers first
+    for (const auto& handler : rawHandlers) {
+        if (handler.callback) {
+            // Simplified raw callback
+            handler.callback(handler.deviceName.c_str(), data, length);
+        }
+    }
+
+    // Process event dispatchers
+    for (const auto& dispatcher : dispatchers) {
+        if (dispatcher.callback) {
+            dispatcher.callback(dispatcher.deviceName.c_str(), 
+                             eventName,
+                             (const char*)data,
+                             header);
+            eventHandled = true;
+        }
+    }
+
+    // Process unhandled events
+    if (!eventHandled && unhandledHandler && unhandledHandler->callback) {
+        unhandledHandler->callback(unhandledHandler->deviceName.c_str(),
+                                 eventName,
+                                 (const char*)data,
+                                 header);
+    }
+}
+
 bool EventMsg::processNextByte(uint8_t byte) {
     // Handle escape sequences
     if (escapedMode) {
@@ -283,38 +314,12 @@ bool EventMsg::processNextByte(uint8_t byte) {
                     headerBuffer[2], // group
                     headerBuffer[3]  // flags
                 };
-                
-                bool eventHandled = false;
 
-                // Call raw data handlers first
-                for (const auto& handler : rawHandlers) {
-                    if (handler.callback) {
-                        handler.callback(handler.deviceName.c_str(),
-                                      (const char*)eventNameBuffer,
-                                      currentBuffer,
-                                      bufferPos,
-                                      msgHeader);
-                    }
-                }
-
-                // Call dispatchers
-                for (const auto& dispatcher : dispatchers) {
-                    if (dispatcher.callback) {
-                        dispatcher.callback(dispatcher.deviceName.c_str(),
-                                         (const char*)eventNameBuffer,
-                                         (const char*)eventDataBuffer,
-                                         msgHeader);
-                        eventHandled = true;
-                    }
-                }
-
-                // Call unhandled handler if no dispatcher handled the event
-                if (!eventHandled && unhandledHandler && unhandledHandler->callback) {
-                    unhandledHandler->callback(unhandledHandler->deviceName.c_str(),
-                                            (const char*)eventNameBuffer,
-                                            (const char*)eventDataBuffer,
-                                            msgHeader);
-                }
+                // Process message through callbacks
+                processCallbacks((const char*)eventNameBuffer,
+                               currentBuffer,
+                               bufferPos,
+                               msgHeader);
                 
                 // Reset for next message
                 resetState();
@@ -327,17 +332,6 @@ bool EventMsg::processNextByte(uint8_t byte) {
             break;
     }
     
-    return true;
-}
-
-bool EventMsg::process(uint8_t* data, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        if (!processNextByte(data[i])) {
-            resetState();
-            return false;
-        }
-    }
-    return true;
     return true;
 }
 
