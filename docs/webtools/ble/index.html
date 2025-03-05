@@ -244,6 +244,113 @@
             font-weight: 500;
             flex: 1;
         }
+
+        .message-config {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message-section {
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 6px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-with-badge {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .hex-badge {
+            position: absolute;
+            left: 8px;
+            color: #666;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .input-with-badge input {
+            padding-left: 28px;
+        }
+
+        .preset-item {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .preset-btn {
+            text-align: left;
+            background: #f0f0f0;
+            color: #333;
+            padding: 12px;
+            flex: 1;
+            margin: 0;
+        }
+
+        .preset-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .preset-action {
+            padding: 8px;
+            background: #f0f0f0;
+            color: #666;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preset-action:hover {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .preset-delete {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+
+        .preset-delete:hover {
+            background: #ffcdd2;
+        }
+
+        h3 {
+            margin-bottom: 15px;
+            color: #444;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
@@ -253,6 +360,16 @@
             <div style="margin-top: 15px">
                 <button id="connectBtn" style="width: 100%; margin-bottom: 10px">Connect to Device</button>
                 <button id="disconnectBtn" style="width: 100%" disabled>Disconnect</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Preset Messages</h2>
+            <div id="presetList" style="margin-top: 15px; display: flex; flex-direction: column;">
+                <!-- Presets will be loaded here -->
+            </div>
+            <div style="margin-top: 15px">
+                <button id="addPreset" style="width: 100%">Add New Preset</button>
             </div>
         </div>
 
@@ -294,35 +411,49 @@
 
         <div class="card">
             <h2>Send Message</h2>
-            <div style="margin-top: 15px">
-                <div class="form-group">
-                    <label>Event Name</label>
-                    <input type="text" id="eventName" value="TEST">
-                </div>
-
-                <div class="form-group">
-                    <label>Data</label>
-                    <input type="text" id="eventData" value="Hello World">
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px">
+            <div class="message-config" style="margin-top: 15px">
+                <div class="message-section">
                     <div class="form-group">
-                        <label>Receiver (hex)</label>
-                        <input type="text" id="receiver" value="FF">
+                        <label>Event Name</label>
+                        <input type="text" id="eventName" value="TEST">
                     </div>
 
                     <div class="form-group">
-                        <label>Group (hex)</label>
-                        <input type="text" id="group" value="00">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Flags (hex)</label>
-                        <input type="text" id="flags" value="80">
+                        <label>Data</label>
+                        <textarea id="eventData" rows="3">Hello World</textarea>
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 10px">
+                <div class="message-section">
+                    <h3>Message Configuration</h3>
+                    <div class="config-grid">
+                        <div class="form-group">
+                            <label>Receiver (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="receiver" value="FF">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Group (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="group" value="00">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Flags (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="flags" value="80">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-row">
                     <button id="sendBtn" disabled style="flex: 1">Send Message</button>
                     <button id="startTest" disabled style="flex: 1">Start Test</button>
                     <button id="stopTest" disabled style="flex: 1">Stop Test</button>
@@ -349,6 +480,102 @@
         let startTime = 0;
         let totalBytes = 0;
         let messageCount = 0;
+
+        // Load presets from localStorage
+        let presets = JSON.parse(localStorage.getItem('presets') || '[]');
+        if (!presets.length) {
+            // Default presets
+            presets = [
+                {
+                    name: 'Get Status',
+                    event: 'STATUS',
+                    data: 'GET_STATUS',
+                    receiver: 'FF',
+                    group: '00',
+                    flags: '80'
+                },
+                {
+                    name: 'Start Control',
+                    event: 'CONTROL',
+                    data: 'START',
+                    receiver: 'FF',
+                    group: '01',
+                    flags: '80'
+                },
+                {
+                    name: 'Stop Control',
+                    event: 'CONTROL',
+                    data: 'STOP',
+                    receiver: 'FF',
+                    group: '01',
+                    flags: '80'
+                }
+            ];
+            localStorage.setItem('presets', JSON.stringify(presets));
+        }
+
+        function savePresets() {
+            localStorage.setItem('presets', JSON.stringify(presets));
+        }
+
+        function createPresetElement(preset, index) {
+            const div = document.createElement('div');
+            div.className = 'preset-item';
+
+            const btn = document.createElement('button');
+            btn.className = 'preset-btn';
+            btn.textContent = preset.name;
+            btn.onclick = () => {
+                document.getElementById('eventName').value = preset.event;
+                document.getElementById('eventData').value = preset.data;
+                document.getElementById('receiver').value = preset.receiver;
+                document.getElementById('group').value = preset.group;
+                document.getElementById('flags').value = preset.flags;
+            };
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'preset-action';
+            editBtn.innerHTML = '✏️';
+            editBtn.onclick = () => {
+                const name = prompt('Enter new preset name:', preset.name);
+                if (!name) return;
+                presets[index].name = name;
+                presets[index].event = document.getElementById('eventName').value;
+                presets[index].data = document.getElementById('eventData').value;
+                presets[index].receiver = document.getElementById('receiver').value;
+                presets[index].group = document.getElementById('group').value;
+                presets[index].flags = document.getElementById('flags').value;
+                savePresets();
+                renderPresets();
+            };
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'preset-action preset-delete';
+            deleteBtn.innerHTML = '❌';
+            deleteBtn.onclick = () => {
+                if (confirm('Delete this preset?')) {
+                    presets.splice(index, 1);
+                    savePresets();
+                    renderPresets();
+                }
+            };
+
+            div.appendChild(btn);
+            div.appendChild(editBtn);
+            div.appendChild(deleteBtn);
+            return div;
+        }
+
+        function renderPresets() {
+            const list = document.getElementById('presetList');
+            list.innerHTML = '';
+            presets.forEach((preset, index) => {
+                list.appendChild(createPresetElement(preset, index));
+            });
+        }
+
+        // Initial render
+        renderPresets();
 
         function formatTimestamp() {
             return new Date().toLocaleTimeString('en-US', { 
@@ -523,6 +750,24 @@
             messageCount++;
             updateStats();
         });
+
+        document.getElementById('addPreset').addEventListener('click', () => {
+            const name = prompt('Enter preset name:');
+            if (!name) return;
+
+            presets.push({
+                name,
+                event: document.getElementById('eventName').value,
+                data: document.getElementById('eventData').value,
+                receiver: document.getElementById('receiver').value,
+                group: document.getElementById('group').value,
+                flags: document.getElementById('flags').value
+            });
+
+            savePresets();
+            renderPresets();
+        });
+
         document.getElementById('startTest').addEventListener('click', startThroughputTest);
         document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
         document.getElementById('clearLogs').addEventListener('click', () => {
@@ -530,7 +775,6 @@
             document.getElementById('messageList').innerHTML = '';
         });
 
-        // Initialize settings
         document.getElementById('writeWithResponse').addEventListener('change', (e) => {
             bleHandler.setWriteWithResponse(e.target.checked);
         });

@@ -57,13 +57,11 @@ public:
     uint8_t getLocalAddress() const { return localAddress; }
     void setLocalAddress(uint8_t addr) { localAddress = addr; }
     
-    // Get device name
-    // const char* getDeviceName() const { return deviceName.c_str(); }
+
 
 private:
     std::map<std::string, EventCallback> handlers;
     uint8_t localAddress;
-    // std::string deviceName;
 };
 
 #endif // EVENT_DISPATCHER_H

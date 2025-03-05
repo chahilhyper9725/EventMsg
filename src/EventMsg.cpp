@@ -24,10 +24,13 @@ bool EventMsg::registerDispatcher(const char* deviceName, const EventHeader& hea
         }
     }
 
-    // Create new dispatcher
+    // Create new dispatcher with header info
     EventDispatcherInfo dispatcher{
         std::string(deviceName),
-        cb
+        cb,
+        header.receiverId,
+        header.senderId,
+        header.groupId
     };
     dispatchers.push_back(dispatcher);
     return true;
@@ -51,10 +54,13 @@ bool EventMsg::registerRawHandler(const char* deviceName, const EventHeader& hea
         }
     }
     
-    // Create new handler
+    // Create new handler with header info
     RawDataHandler handler{
         std::string(deviceName),
-        cb
+        cb,
+        header.receiverId,
+        header.senderId,
+        header.groupId
     };
     rawHandlers.push_back(handler);
     return true;
@@ -76,6 +82,9 @@ void EventMsg::setUnhandledHandler(const char* deviceName, const EventHeader& he
     }
     unhandledHandler->deviceName = std::string(deviceName);
     unhandledHandler->callback = cb;
+    unhandledHandler->receiverId = header.receiverId;
+    unhandledHandler->senderId = header.senderId;
+    unhandledHandler->groupId = header.groupId;
 }
 
 size_t EventMsg::ByteStuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen) {
@@ -130,6 +139,29 @@ size_t EventMsg::StringToBytes(const char* str, uint8_t* output, size_t outputMa
     return len;
 }
 
+size_t EventMsg::send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId,uint8_t senderId) {
+    EventHeader header = {
+        senderId,    // Local address as sender
+        receiverId,   // Destination address
+        groupId,      // Group address
+        0x00          // No flags
+    };
+    return send(name, data, header);
+}
+
+size_t EventMsg::send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId=0x00) {
+    EventHeader header = {
+        localAddr,    // Local address as sender
+        receiverId,         // Broadcast to all
+        groupId,
+                0x00          // No flags
+    };
+    return send(name, data, header);
+}
+
+
+
+
 size_t EventMsg::send(const char* name, const char* data, const EventHeader& header) {
     uint8_t tempBuf[MAX_EVENT_NAME_SIZE * 2];
     uint8_t msgBuf[MAX_EVENT_DATA_SIZE * 2];
@@ -140,7 +172,7 @@ size_t EventMsg::send(const char* name, const char* data, const EventHeader& hea
 
     // Create and stuff header bytes
     uint8_t headerBytes[] = {
-        localAddr,                // Local address as sender
+        header.senderId,                // Local address as sender
         header.receiverId,        // Destination address
         header.groupId,          // Group address
         header.flags,            // Flags
@@ -204,20 +236,44 @@ void EventMsg::resetState() {
     memset(eventDataBuffer, 0, sizeof(eventDataBuffer));
 }
 
+bool EventMsg::isHandlerMatch(const EventHeader& header, uint8_t receiverId, uint8_t senderId, uint8_t groupId) {
+    // Check receiver match (accept if broadcast or matching)
+    if (receiverId != BROADCAST_ADDR && 
+        header.receiverId != BROADCAST_ADDR && 
+        receiverId != header.receiverId) {
+        return false;
+    }
+    
+    // Check sender match (accept if BROADCAST_SENDER or matching)
+    // if (senderId != BROADCAST_SENDER && 
+    //     senderId != header.senderId) {
+    //     return false;
+    // }
+    
+    // Check group match (accept if broadcast or matching)
+    if (groupId != BROADCAST_ADDR &&
+        header.groupId != BROADCAST_ADDR &&
+        groupId != header.groupId) {
+        return false;
+    }
+    
+    return true;
+}
+
 void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size_t length, EventHeader& header) {
     bool eventHandled = false;
 
     // Process raw handlers first
     for (const auto& handler : rawHandlers) {
-        if (handler.callback) {
-            // Simplified raw callback
+        if (handler.callback && isHandlerMatch(header, handler.receiverId, handler.senderId, handler.groupId)) {
+            // Call raw callback if matches filter criteria
             handler.callback(handler.deviceName.c_str(), data, length);
         }
     }
 
     // Process event dispatchers
     for (const auto& dispatcher : dispatchers) {
-        if (dispatcher.callback) {
+        if (dispatcher.callback && isHandlerMatch(header, dispatcher.receiverId, dispatcher.senderId, dispatcher.groupId)) {
             dispatcher.callback(dispatcher.deviceName.c_str(), 
                              eventName,
                              (const char*)data,
@@ -227,7 +283,8 @@ void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size
     }
 
     // Process unhandled events
-    if (!eventHandled && unhandledHandler && unhandledHandler->callback) {
+    if (!eventHandled && unhandledHandler && unhandledHandler->callback &&
+        isHandlerMatch(header, unhandledHandler->receiverId, unhandledHandler->senderId, unhandledHandler->groupId)) {
         unhandledHandler->callback(unhandledHandler->deviceName.c_str(),
                                  eventName,
                                  (const char*)data,

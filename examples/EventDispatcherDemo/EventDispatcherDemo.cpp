@@ -50,6 +50,7 @@ void setup() {
     };
     eventMsg.registerDispatcher("fileHandler", dispatcherHeader, fileDispatcher.getHandler());
     
+    
     Serial.println("File operation handler ready!");
     Serial.println("Available commands:");
     Serial.println("1. deleteFile <filename>");

@@ -29,6 +29,10 @@ struct EventHeader {
 #define MAX_EVENT_NAME_SIZE 32    // Maximum raw event name length
 #define MAX_EVENT_DATA_SIZE 2048  // Maximum raw event data length
 
+// Broadcast definitions
+#define BROADCAST_ADDR 0xFF    // For both receiver and group
+#define BROADCAST_SENDER 0xFF  // Accept all senders
+
 // Enhanced debug output with timestamp and module name
 #define DEBUG_PRINT(msg, ...) \
     do { \
@@ -48,11 +52,17 @@ using RawDataCallback = std::function<void(const char* deviceName, const uint8_t
 struct RawDataHandler {
     std::string deviceName;
     RawDataCallback callback;
+    uint8_t receiverId;  // FF = accept broadcast
+    uint8_t senderId;    // FF = accept any sender
+    uint8_t groupId;     // FF = accept broadcast groups
 };
 
 struct EventDispatcherInfo {
     std::string deviceName;
     EventDispatcherCallback callback;
+    uint8_t receiverId;  // FF = accept broadcast
+    uint8_t senderId;    // FF = accept any sender
+    uint8_t groupId;     // FF = accept broadcast groups
 };
 
 class EventMsg {
@@ -102,9 +112,12 @@ public:
     bool init(WriteCallback cb);
     void setAddr(uint8_t addr);
     void setGroup(uint8_t addr);
-    
+    bool isHandlerMatch(const EventHeader& header, uint8_t receiverId, uint8_t senderId, uint8_t groupId) ;
+
     // Message handling with EventHeader
     size_t send(const char* name, const char* data, const EventHeader& header);
+    size_t send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId, uint8_t senderId);
+    size_t send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId);
     bool process(uint8_t* data, size_t len);
     
     // Event registration with simplified parameters
