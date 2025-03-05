@@ -4,7 +4,7 @@
 
 // Create instances
 EventMsg eventMsg;
-EventDispatcher fileDispatcher;
+EventDispatcher fileDispatcher(0x01);  // Initialize with local address
 
 void setup() {
     Serial.begin(115200);
@@ -15,46 +15,48 @@ void setup() {
         return Serial.write(data, len) == len;
     });
     
-    // Set addresses
-    eventMsg.setAddr(0x01);
-    eventMsg.setGroup(0x00);
-    
     // Register file operation handlers
-    fileDispatcher.on("deleteFile", [](const char* data, const EventHeader& header) {
+    fileDispatcher.on("deleteFile", [](const char* data, EventHeader& header) {
         Serial.printf("Deleting file: %s\n", data);
         
-        // Send response back to sender
-        EventHeader responseHeader = {
-            0x01,           // Our address
-            header.senderId, // Original sender
-            0x00,           // No group
-            0x00            // No flags
-        };
+        // Create response header automatically
+        auto responseHeader = fileDispatcher.createResponseHeader(header);
         eventMsg.send("fileDeleted", "success", responseHeader);
     });
     
-    fileDispatcher.on("renameFile", [](const char* data, const EventHeader& header) {
+    fileDispatcher.on("renameFile", [](const char* data, EventHeader& header) {
         Serial.printf("Renaming file: %s\n", data);
         
-        // Send response back
-        EventHeader responseHeader = {0x01, header.senderId, 0x00, 0x00};
+        // Create response header automatically
+        auto responseHeader = fileDispatcher.createResponseHeader(header);
         eventMsg.send("fileRenamed", "success", responseHeader);
     });
     
-    // Register dispatcher with EventMsg
-    EventHeader dispatcherHeader = {
-        0x00,    // senderId not used for registration
-        0x01,    // Only handle messages sent to us
-        0x00,    // No group filtering
-        0x00     // No flags
-    };
-    eventMsg.registerDispatcher("fileHandler", dispatcherHeader, fileDispatcher.getHandler());
+    fileDispatcher.on("listFiles", [](const char* data, EventHeader& header) {
+        Serial.println("Listing files in directory");
+        
+        // Example directory listing response
+        const char* fileList = "file1.txt,file2.txt,data.bin";
+        
+        // Create response header automatically
+        auto responseHeader = fileDispatcher.createResponseHeader(header);
+        eventMsg.send("fileList", fileList, responseHeader);
+    });
     
+    // Register dispatcher with EventMsg using helper
+    eventMsg.registerDispatcher("fileHandler", 
+                              fileDispatcher.createHeader(0x01),  // Only handle direct messages
+                              fileDispatcher.getHandler());
     
     Serial.println("File operation handler ready!");
     Serial.println("Available commands:");
     Serial.println("1. deleteFile <filename>");
     Serial.println("2. renameFile <oldname>:<newname>");
+    Serial.println("3. listFiles <directory>");
+    
+    // Send startup notification
+    auto header = fileDispatcher.createHeader(0xFF); // Broadcast
+    eventMsg.send("fileHandler", "ready", header);
 }
 
 void loop() {
@@ -62,5 +64,18 @@ void loop() {
     while (Serial.available()) {
         uint8_t byte = Serial.read();
         eventMsg.process(&byte, 1);
+    }
+    
+    // Send status update every 10 seconds
+    static unsigned long lastStatus = 0;
+    if (millis() - lastStatus >= 10000) {
+        char status[32];
+        snprintf(status, sizeof(status), "Uptime: %lus", millis() / 1000);
+        
+        // Create broadcast header for status update
+        auto header = fileDispatcher.createHeader(0xFF);
+        eventMsg.send("fileStatus", status, header);
+        
+        lastStatus = millis();
     }
 }

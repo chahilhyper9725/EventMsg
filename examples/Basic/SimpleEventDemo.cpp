@@ -1,61 +1,56 @@
 #include <Arduino.h>
 #include <EventMsg.h>
+#include <EventDispatcher.h>
 
 // Create EventMsg instance
 EventMsg eventMsg;
 
+// Create dispatchers for different purposes
+EventDispatcher mainDispatcher(0x01);    // Local address 0x01
+EventDispatcher monitorDispatcher(0x01); // For monitoring
+EventDispatcher unhandledDispatcher(0x01); // For unhandled events
+
 // LED pin (built-in LED on most ESP32 boards)
 const int LED_PIN = 2;
 
-// Event dispatcher handler with device name
-// Event handler for main functionality
-void mainHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== Event from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
+// Raw data handler for monitoring traffic
+void monitorCallback(const char* data, EventHeader& header) {
+    Serial.printf("=== Monitor Traffic ===\n");
+    Serial.printf("From: 0x%02X, To: 0x%02X, Group: 0x%02X\n", 
+                 header.senderId, header.receiverId, header.groupId);
     Serial.printf("Data: %s\n", data);
-    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
+}
 
-    if (strcmp(event, "LED_CONTROL") == 0) {
+// Setup event handlers using the new dispatcher interface
+void setupHandlers() {
+    // LED control handler
+    mainDispatcher.on("LED_CONTROL", [](const char* data, EventHeader& header) {
         bool state = (data[0] == '1');
         digitalWrite(LED_PIN, state);
+        
+        // Create response header automatically setting correct sender/receiver
+        auto responseHeader = mainDispatcher.createResponseHeader(header);
         char response[32];
         snprintf(response, sizeof(response), "LED is now %s", state ? "ON" : "OFF");
-        eventMsg.send("LED_STATUS", response, sender, 0x00, 0x00); // Reply to sender
-    }
-    else if (strcmp(event, "PING") == 0) {
-        eventMsg.send("PONG", data, sender, 0x00, 0x00); // Reply to sender
-    }
-}
-
-// Raw data handler for monitoring traffic
-void monitorHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
-    Serial.printf("=== Monitor %s: %s ===\n", deviceName, event);
-    Serial.printf("Length: %d bytes\n", length);
-    Serial.print("Raw data: ");
-    for(size_t i = 0; i < length; i++) {
-        Serial.printf("%02X ", data[i]);
-    }
-    Serial.println();
-}
-
-// Unhandled event handler
-void unhandledHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== Unhandled Event from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
-    Serial.printf("Data: %s\n", data);
-    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
-}
-
-// Raw data handler
-void rawHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
-    Serial.printf("=== Raw Data from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
-    Serial.printf("Length: %d bytes\n", length);
-    Serial.print("Data (hex): ");
-    for(size_t i = 0; i < length; i++) {
-        Serial.printf("%02X ", data[i]);
-    }
-    Serial.println();
+        eventMsg.send("LED_STATUS", response, responseHeader);
+    });
+    
+    // Ping handler
+    mainDispatcher.on("PING", [](const char* data, EventHeader& header) {
+        auto responseHeader = mainDispatcher.createResponseHeader(header);
+        eventMsg.send("PONG", data, responseHeader);
+    });
+    
+    // Monitor handler
+    monitorDispatcher.on("*", monitorCallback); // Catch all events for monitoring
+    
+    // Unhandled events handler
+    unhandledDispatcher.on("*", [](const char* data, EventHeader& header) {
+        Serial.printf("=== Unhandled Event ===\n");
+        Serial.printf("From: 0x%02X, To: 0x%02X, Group: 0x%02X\n", 
+                     header.senderId, header.receiverId, header.groupId);
+        Serial.printf("Data: %s\n", data);
+    });
 }
 
 void setup() {
@@ -72,15 +67,26 @@ void setup() {
         return Serial.write(data, len) == len;
     });
     
-    // Set device address (1) and group (0)
-    eventMsg.setAddr(0x01);
-    eventMsg.setGroup(0x00);
+    // Set up handlers
+    setupHandlers();
     
-    // Register handlers
-    eventMsg.registerDispatcher("main", 0x01, 0x00, mainHandler);      // Direct messages
-    eventMsg.registerDispatcher("broadcast", 0xFF, 0x00, mainHandler); // Broadcasts
-    eventMsg.registerRawHandler("monitor", 0xFF, 0x00, monitorHandler); // Traffic monitoring
-    eventMsg.setUnhandledHandler("unhandled", 0xFF, 0x00, unhandledHandler); // Unmatched events
+    // Register dispatchers with EventMsg using simplified header creation
+    eventMsg.registerDispatcher("main", 
+                              mainDispatcher.createHeader(0x01), // Direct messages
+                              mainDispatcher.getHandler());
+                              
+    eventMsg.registerDispatcher("broadcast", 
+                              mainDispatcher.createHeader(0xFF), // Broadcast messages
+                              mainDispatcher.getHandler());
+                              
+    eventMsg.registerDispatcher("monitor", 
+                              monitorDispatcher.createHeader(0xFF), // Monitor all messages
+                              monitorDispatcher.getHandler());
+                              
+    // Set unhandled event handler
+    eventMsg.setUnhandledHandler("unhandled", 
+                                unhandledDispatcher.createHeader(0xFF),
+                                unhandledDispatcher.getHandler());
     
     Serial.println("EventMsg Demo Ready!");
     Serial.println("Commands:");
@@ -100,7 +106,11 @@ void loop() {
     if (millis() - lastHeartbeat >= 5000) {
         char data[32];
         snprintf(data, sizeof(data), "Uptime: %lus", millis() / 1000);
-        eventMsg.send("HEARTBEAT", data, 0xFF, 0x00, 0x00);
+        
+        // Create broadcast header for heartbeat
+        auto header = mainDispatcher.createHeader(0xFF); // Broadcast address
+        eventMsg.send("HEARTBEAT", data, header);
+        
         lastHeartbeat = millis();
     }
 }

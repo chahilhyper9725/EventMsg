@@ -1,58 +1,14 @@
 #include <Arduino.h>
 #include "EventMsg.h"
+#include "EventDispatcher.h"
 
 EventMsg eventMsg;
 
-// Callback handler for BLE phone device
-void phoneHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== Phone Event from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
-    Serial.printf("Data: %s\n", data);
-    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
-    
-    if (strcmp(event, "ble_connect") == 0) {
-        Serial.println("Processing BLE connection request");
-    }
-    else if (strcmp(event, "send_lua") == 0) {
-        Serial.println("Receiving Lua code via BLE");
-    }
-}
-
-// Callback handler for ESP32-NOW nodes
-void nodeHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== Node Event from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
-    Serial.printf("Data: %s\n", data);
-    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
-    
-    if (strcmp(event, "espnow_forward") == 0) {
-        Serial.println("Forwarding message to ESP-NOW network");
-    }
-    else if (strcmp(event, "broadcast_cmd") == 0) {
-        Serial.println("Broadcasting command to all nodes");
-    }
-}
-
-// Raw data handler for monitoring
-void rawHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
-    Serial.printf("=== Raw Data from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
-    Serial.printf("Length: %d bytes\n", length);
-    Serial.print("Data (hex): ");
-    for(size_t i = 0; i < length; i++) {
-        Serial.printf("%02X ", data[i]);
-    }
-    Serial.println();
-}
-
-// Unhandled event handler (same signature as event dispatchers)
-void unhandledHandler(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("=== Unhandled Event from %s ===\n", deviceName);
-    Serial.printf("Event: %s\n", event);
-    Serial.printf("Data: %s\n", data);
-    Serial.printf("From: 0x%02X, To: 0x%02X\n", sender, receiver);
-    Serial.println("Message was not processed by any dispatcher");
-}
+// Create dispatchers for different device types
+EventDispatcher phoneDispatcher(0x01);    // For phone communication
+EventDispatcher nodeDispatcher(0x01);     // For ESP32 node communication
+EventDispatcher monitorDispatcher(0x01);  // For traffic monitoring
+EventDispatcher unhandledDispatcher(0x01); // For unhandled events
 
 void setup() {
     Serial.begin(115200);
@@ -64,33 +20,102 @@ void setup() {
         return true;
     });
     
-    // Set local address for this device
-    eventMsg.setAddr(0x01);
+    // Set up phone communication handlers
+    phoneDispatcher.on("ble_connect", [](const char* data, EventHeader& header) {
+        Serial.println("Processing BLE connection request");
+        
+        // Send response using helper
+        auto responseHeader = phoneDispatcher.createResponseHeader(header);
+        eventMsg.send("ble_status", "connected", responseHeader);
+    });
     
-    // Register dispatchers for different device types
-    eventMsg.registerDispatcher("phone1", 0x01, 0x00, phoneHandler);   // Phone on addr 0x01
-    eventMsg.registerDispatcher("nodes", 0xFF, 0x00, nodeHandler);     // All ESP32 nodes
-    eventMsg.registerDispatcher("group1", 0xFF, 0x01, nodeHandler);    // Group 1 nodes
+    phoneDispatcher.on("send_lua", [](const char* data, EventHeader& header) {
+        Serial.println("Receiving Lua code via BLE");
+        Serial.printf("Code: %s\n", data);
+        
+        auto responseHeader = phoneDispatcher.createResponseHeader(header);
+        eventMsg.send("lua_status", "received", responseHeader);
+    });
     
-    // Register raw data handler for monitoring
-    eventMsg.registerRawHandler("monitor", 0xFF, 0x00, rawHandler);    // Monitor all messages
+    // Set up ESP32 node handlers
+    nodeDispatcher.on("espnow_forward", [](const char* data, EventHeader& header) {
+        Serial.println("Forwarding message to ESP-NOW network");
+        
+        // Create broadcast header for forwarding
+        auto broadcastHeader = nodeDispatcher.createHeader(0xFF);
+        eventMsg.send("forward", data, broadcastHeader);
+    });
     
+    nodeDispatcher.on("broadcast_cmd", [](const char* data, EventHeader& header) {
+        Serial.println("Broadcasting command to all nodes");
+        Serial.printf("Command: %s\n", data);
+        
+        // Send acknowledgment back to sender
+        auto responseHeader = nodeDispatcher.createResponseHeader(header);
+        eventMsg.send("cmd_ack", "received", responseHeader);
+    });
+    
+    // Set up monitoring for all traffic
+    monitorDispatcher.on("*", [](const char* data, EventHeader& header) {
+        Serial.printf("=== Monitor Traffic ===\n");
+        Serial.printf("From: 0x%02X, To: 0x%02X, Group: 0x%02X\n", 
+                     header.senderId, header.receiverId, header.groupId);
+        Serial.printf("Data: %s\n", data);
+    });
+    
+    // Set up unhandled event handler
+    unhandledDispatcher.on("*", [](const char* data, EventHeader& header) {
+        Serial.printf("=== Unhandled Event ===\n");
+        Serial.printf("From: 0x%02X, To: 0x%02X, Group: 0x%02X\n", 
+                     header.senderId, header.receiverId, header.groupId);
+        Serial.printf("Data: %s\n", data);
+        Serial.println("Message was not processed by any dispatcher");
+    });
+    
+    // Register dispatchers with EventMsg using proper headers
+    eventMsg.registerDispatcher("phone1", 
+                              phoneDispatcher.createHeader(0x01),  // Phone messages
+                              phoneDispatcher.getHandler());
+                              
+    eventMsg.registerDispatcher("nodes", 
+                              nodeDispatcher.createHeader(0xFF),   // All nodes
+                              nodeDispatcher.getHandler());
+                              
+    eventMsg.registerDispatcher("group1", 
+                              nodeDispatcher.createHeader(0xFF, 0x01),  // Group 1
+                              nodeDispatcher.getHandler());
+                              
+    eventMsg.registerDispatcher("monitor", 
+                              monitorDispatcher.createHeader(0xFF),  // All traffic
+                              monitorDispatcher.getHandler());
+                              
     // Set handler for unmatched events
-    eventMsg.setUnhandledHandler("unhandled", 0xFF, 0x00, unhandledHandler);
+    eventMsg.setUnhandledHandler("unhandled", 
+                                unhandledDispatcher.createHeader(0xFF),
+                                unhandledDispatcher.getHandler());
     
     // Test sending messages
     Serial.println("Sending test messages...\n");
     
     // Direct message to phone
-    eventMsg.send("ble_connect", "request_conn", 0x01, 0x00, 0x00);
+    {
+        auto header = phoneDispatcher.createHeader(0x01);
+        eventMsg.send("ble_connect", "request_conn", header);
+    }
     delay(100);
     
     // Broadcast to all nodes
-    eventMsg.send("broadcast_cmd", "status_request", 0xFF, 0x00, 0x00);
+    {
+        auto header = nodeDispatcher.createHeader(0xFF);
+        eventMsg.send("broadcast_cmd", "status_request", header);
+    }
     delay(100);
     
     // Message to Group 1
-    eventMsg.send("group_msg", "hello group 1", 0xFF, 0x01, 0x00);
+    {
+        auto header = nodeDispatcher.createHeader(0xFF, 0x01);
+        eventMsg.send("group_msg", "hello group 1", header);
+    }
 }
 
 void loop() {
@@ -105,7 +130,11 @@ void loop() {
     if (millis() - lastHeartbeat >= 5000) {
         char data[32];
         snprintf(data, sizeof(data), "Uptime: %lus", millis() / 1000);
-        eventMsg.send("HEARTBEAT", data, 0xFF, 0x00, 0x00);
+        
+        // Use broadcast header for heartbeat
+        auto header = phoneDispatcher.createHeader(0xFF);
+        eventMsg.send("HEARTBEAT", data, header);
+        
         lastHeartbeat = millis();
     }
 }

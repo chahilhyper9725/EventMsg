@@ -5,8 +5,8 @@ A lightweight event-based messaging protocol library for ESP32 and Arduino platf
 ## Features
 
 - 🔄 Reliable message framing with byte stuffing
-- 📫 Advanced dispatcher system with device-based handlers
-- 👥 Group-based message filtering
+- 📫 Modern EventDispatcher system with simplified event handling
+- 👥 Group-based message filtering with EventHeader support
 - 🔌 Transport layer agnostic (UART, TCP, BLE, etc.)
 - 🛡️ Buffer overflow protection
 - 🧩 Event-based architecture with full context support
@@ -29,9 +29,87 @@ lib_deps =
 2. Copy it to your Arduino/libraries folder
 3. Restart your Arduino IDE
 
-## Addressing and Message Routing
+## Quick Start
 
-The EventMsg library uses a flexible addressing system that supports both direct messaging and group-based communication:
+### Using EventDispatcher
+
+The primary way to handle events is using the EventDispatcher class:
+
+```cpp
+#include <EventMsg.h>
+#include <EventDispatcher.h>
+
+EventMsg eventMsg;
+EventDispatcher mainDispatcher(0x01);  // Initialize with local address
+
+void setup() {
+    // Initialize EventMsg
+    eventMsg.init([](uint8_t* data, size_t len) {
+        return Serial.write(data, len) == len;
+    });
+    
+    // Register event handlers
+    mainDispatcher.on("LED_CONTROL", [](const char* data, EventHeader& header) {
+        bool state = (data[0] == '1');
+        digitalWrite(LED_BUILTIN, state);
+        
+        // Create response header automatically
+        auto responseHeader = mainDispatcher.createResponseHeader(header);
+        eventMsg.send("LED_STATUS", state ? "ON" : "OFF", responseHeader);
+    });
+    
+    // Register dispatcher with EventMsg
+    eventMsg.registerDispatcher("main", 
+                              mainDispatcher.createHeader(0x01), // Direct messages
+                              mainDispatcher.getHandler());
+}
+```
+
+### Using Event Subsystems
+
+Organize code into logical subsystems:
+
+```cpp
+// Define a subsystem
+struct SensorSubsystem {
+    EventDispatcher dispatcher;
+    float lastTemp = 25.0f;
+    
+    SensorSubsystem() : dispatcher(0x01) {  // Set local address
+        dispatcher.on("readTemp", [this](const char* data, EventHeader& header) {
+            char response[32];
+            snprintf(response, sizeof(response), "%.1f", lastTemp);
+            
+            // Use helper for response header
+            auto responseHeader = dispatcher.createResponseHeader(header);
+            eventMsg.send("tempData", response, responseHeader);
+        });
+    }
+    
+    void registerWithEventMsg() {
+        eventMsg.registerDispatcher("sensor",
+                                  dispatcher.createHeader(0x01),  // Listen on address 0x01
+                                  dispatcher.getHandler());
+    }
+};
+```
+
+### Event Header Structure
+
+Messages use the EventHeader struct for routing:
+
+```cpp
+struct EventHeader {
+    uint8_t senderId;    // Source device address
+    uint8_t receiverId;  // Destination address (0xFF for broadcast)
+    uint8_t groupId;     // Group address (0x00 for no group)
+    uint8_t flags;       // Message flags
+};
+```
+
+### Addressing and Message Routing
+
+The EventMsg library supports flexible addressing:
 
 ```mermaid
 graph TB
@@ -48,19 +126,54 @@ graph TB
     end
 ```
 
-### Addressing Modes
+#### Create Headers for Different Routing:
 
-1. **Direct Messaging**
-   - Set specific receiver address
-   - `msg.send("EVENT", "data", 0x02, 0x00, 0x00);  // To device 0x02`
+```cpp
+// Direct message to device 0x02
+auto directHeader = dispatcher.createHeader(0x02);
 
-2. **Group Broadcasting**
-   - Use broadcast address with group
-   - `msg.send("EVENT", "data", 0xFF, 0x01, 0x00);  // To all in group 0x01`
+// Message to all devices in group 0x01
+auto groupHeader = dispatcher.createHeader(0xFF, 0x01);
 
-3. **Global Broadcasting**
-   - Use broadcast address with no group
-   - `msg.send("EVENT", "data", 0xFF, 0x00, 0x00);  // To all devices`
+// Broadcast to all devices
+auto broadcastHeader = dispatcher.createHeader(0xFF);
+
+// Create response header from received message
+auto responseHeader = dispatcher.createResponseHeader(receivedHeader);
+```
+
+### Multiple Dispatchers Example
+
+Handle different types of messages with separate dispatchers:
+
+```cpp
+// Create dispatchers for different subsystems
+EventDispatcher fileDispatcher(0x01);    // File operations
+EventDispatcher sensorDispatcher(0x01);  // Sensor handling
+EventDispatcher networkDispatcher(0x01); // Network operations
+
+// Set up handlers
+fileDispatcher.on("deleteFile", [](const char* data, EventHeader& header) {
+    // Handle file deletion
+    auto responseHeader = fileDispatcher.createResponseHeader(header);
+    eventMsg.send("fileDeleted", "success", responseHeader);
+});
+
+sensorDispatcher.on("readTemp", [](const char* data, EventHeader& header) {
+    // Handle temperature reading
+    auto responseHeader = sensorDispatcher.createResponseHeader(header);
+    eventMsg.send("tempData", "25.5", responseHeader);
+});
+
+// Register dispatchers
+eventMsg.registerDispatcher("file", 
+                          fileDispatcher.createHeader(0x01),
+                          fileDispatcher.getHandler());
+
+eventMsg.registerDispatcher("sensor",
+                          sensorDispatcher.createHeader(0x01),
+                          sensorDispatcher.getHandler());
+```
 
 ## Performance and Memory Usage
 
@@ -80,188 +193,6 @@ graph TB
 - Handler lookup: O(n) where n = number of handlers
 - Total overhead: ~10μs per byte on ESP32 @ 240MHz
 
-## Quick Start
-
-### Using Event Subsystems
-
-The EventDispatcher enables organizing code into logical subsystems:
-
-```cpp
-// Define a subsystem
-struct SensorSubsystem {
-    EventDispatcher dispatcher;
-    float lastTemp = 25.0f;
-    
-    SensorSubsystem() : dispatcher(DEVICE01) {
-        dispatcher.on("readTemp", [this](const char* data, const EventHeader& header) {
-            char response[32];
-            snprintf(response, sizeof(response), "%.1f", lastTemp);
-            auto responseHeader = dispatcher.createResponseHeader(header);
-            eventMsg.send("tempData", response, responseHeader);
-        });
-    }
-    
-    void registerWithEventMsg() {
-        eventMsg.registerDispatcher("sensor", 
-            dispatcher.createHeader(DEVICE01),
-            dispatcher.getHandler());
-    }
-};
-
-// Use multiple subsystems
-SensorSubsystem sensors;
-FileSubsystem files;
-
-void setup() {
-    // Initialize event system
-    eventMsg.init(writeCallback);
-    
-    // Register subsystems
-    sensors.registerWithEventMsg();
-    files.registerWithEventMsg();
-}
-```
-
-### Features
-- Organize code into logical subsystems
-- Each subsystem handles its own events
-- Clean response header management
-- Independent dispatcher instances
-- Automatic event routing
-
-### Using EventDispatcher
-
-The library now includes a simplified EventDispatcher for easier event handling:
-
-```cpp
-#include <EventMsg.h>
-#include <EventDispatcher.h>
-
-EventMsg eventMsg;
-EventDispatcher fileDispatcher(DEVICE01);  // Initialize with local address
-
-void setup() {
-    Serial.begin(115200);
-    
-    // Initialize EventMsg
-    eventMsg.init([](uint8_t* data, size_t len) {
-        return Serial.write(data, len) == len;
-    });
-    
-    // Register event handlers
-    fileDispatcher.on("deleteFile", [](const char* data, const EventHeader& header) {
-        Serial.printf("Deleting file: %s\n", data);
-        
-        // Send response using helper function
-        auto responseHeader = EventDispatcher::createResponseHeader(header);
-        eventMsg.send("fileDeleted", "success", responseHeader);
-    });
-    
-    fileDispatcher.on("renameFile", [](const char* data, const EventHeader& header) {
-        Serial.printf("Renaming file: %s\n", data);
-        
-        // Create broadcast header using helper
-        auto broadcastHeader = EventDispatcher::createHeader(DEVICEBROADCAST);
-        eventMsg.send("fileRenamed", "success", broadcastHeader);
-    });
-    
-    // Register dispatcher with EventMsg
-    auto dispatcherHeader = EventDispatcher::createHeader(DEVICE01, GROUP00);
-    eventMsg.registerDispatcher("fileHandler", dispatcherHeader, EventDispatcher::handler);
-}
-```
-
-### Event Header Structure
-
-The new EventHeader struct simplifies message routing:
-
-```cpp
-struct EventHeader {
-    uint8_t senderId;    // Source device address
-    uint8_t receiverId;  // Destination device address
-    uint8_t groupId;     // Group address
-    uint8_t flags;       // Message flags
-};
-```
-
-### Helper Functions
-
-EventDispatcher provides convenient helper functions for header creation:
-
-```cpp
-// Create header for sending to specific device/group
-auto header = EventDispatcher::createHeader(DEVICE01, GROUP00);
-
-// Create header for responding to a message
-auto responseHeader = EventDispatcher::createResponseHeader(originalHeader);
-```
-
-### Legacy Basic Usage with Event Dispatchers
-
-```cpp
-#include <EventMsg.h>
-
-EventMsg eventMsg;
-
-// Handler for mobile app messages with full context
-void mobileAppHandler(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("Mobile App Event: %s, From: 0x%02X\n", event, sender);
-    
-    if (strcmp(event, "LED_CONTROL") == 0) {
-        digitalWrite(LED_BUILTIN, data[0] == '1');
-    }
-}
-
-// Handler for sensor node messages
-void sensorHandler(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver) {
-    Serial.printf("Sensor Event: %s, From: 0x%02X\n", event, sender);
-    
-    if (strcmp(event, "TEMP_UPDATE") == 0) {
-        // Process temperature data
-        float temp = atof(data);
-        // Handle temperature reading
-    }
-}
-
-void setup() {
-    Serial.begin(115200);
-  
-    // Initialize with Serial write callback
-    eventMsg.init([](uint8_t* data, size_t len) {
-        return Serial.write(data, len) == len;
-    });
-  
-    // Set device address
-    eventMsg.setAddr(0x01);
-  
-    // Register device-specific handlers
-    eventMsg.registerDispatcher("mobile_app", 0x01, 0x00, mobileAppHandler);  // Mobile app messages
-    eventMsg.registerDispatcher("sensors", 0xFF, 0x00, sensorHandler);        // Sensor broadcasts
-}
-
-void loop() {
-    // Check for incoming data
-    while (Serial.available()) {
-        uint8_t byte = Serial.read();
-        eventMsg.process(&byte, 1);
-    }
-  
-    // Send temperature reading every second
-    static unsigned long lastSend = 0;
-    if (millis() - lastSend >= 1000) {
-        float temp = readTemperature(); // Your temperature reading function
-        char data[32];
-        snprintf(data, sizeof(data), "%.1f", temp);
-        eventMsg.send("TEMP_UPDATE", data, 0xFF, 0x00, 0x00);  // Broadcast to all sensors
-        lastSend = millis();
-    }
-}
-```
-
-### ESP32 BLE Example
-
-See [examples/BLE_ESP32](examples/BLE_ESP32) for a complete BLE communication example that demonstrates using the dispatcher system with both BLE and ESP-NOW communication.
-
 ## Protocol Details
 
 The EventMsg protocol uses a simple message format with proper framing:
@@ -278,153 +209,44 @@ For detailed implementation documentation including core components, memory mana
 
 The library comes with web-based tools to help with development and debugging:
 
-- **Protocol Debugger** ([docs/webtools/protocol-debugger.html](docs/webtools/protocol-debugger.html)) - Interactively explore the protocol structure and decode messages
-- **Protocol Editor** ([docs/webtools/protocol-editor.html](docs/webtools/protocol-editor.html)) - Visual tool to create and edit protocol messages
-- **BLE Tester** ([docs/webtools/ble-tester.html](docs/webtools/ble-tester.html)) - Test BLE communication using the EventMsg protocol
+- **Protocol Debugger** ([docs/webtools/protocol-debugger.html](docs/webtools/protocol-debugger.html))
+- **Protocol Editor** ([docs/webtools/protocol-editor.html](docs/webtools/protocol-editor.html))  
+- **BLE Tester** ([docs/webtools/ble-tester.html](docs/webtools/ble-tester.html))
 
-### Raw Data Handler Usage
+## Advanced Examples
+
+### BLE Communication
+See [examples/BLE_ESP32](examples/BLE_ESP32) for a complete BLE example using multiple dispatchers.
+
+### Raw Data Handling
+For binary protocols or low-level message access, use raw handlers:
 
 ```cpp
-#include <EventMsg.h>
-
-EventMsg eventMsg;
-
-// Raw handler for binary data
-void rawHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
-    Serial.printf("Raw Event from %s: %s, Length: %d\n", deviceName, event, length);
+eventMsg.registerRawHandler("binary", 
+                          dispatcher.createHeader(0x02),
+                          [](const char* deviceName, const uint8_t* data, size_t length) {
     // Process binary data directly
     for(size_t i = 0; i < length; i++) {
         Serial.printf("%02X ", data[i]);
     }
-    Serial.println();
-}
+});
+```
 
-// Unhandled event handler
-void unhandledHandler(const char* deviceName, const char* event, uint8_t* data, size_t length) {
-    Serial.printf("Unhandled from %s: %s, Length: %d\n", deviceName, event, length);
-    // Log or process unhandled events
-}
+### Unhandled Events
+Catch events not handled by any dispatcher:
 
-void setup() {
-    Serial.begin(115200);
-    
-    eventMsg.init([](uint8_t* data, size_t len) {
-        return Serial.write(data, len) == len;
-    });
-    
-    eventMsg.setAddr(0x01);
-    
-    // Register raw data handler for binary protocols
-    eventMsg.registerRawHandler("binary_handler", 0x02, 0x01, rawHandler);
-    
-    // Set handler for unmatched events
-    eventMsg.setUnhandledHandler("unhandled", 0xFF, 0x00, unhandledHandler);
-}
-
-void loop() {
-    while (Serial.available()) {
-        uint8_t byte = Serial.read();
-        eventMsg.process(&byte, 1);
-    }
-}
+```cpp
+eventMsg.setUnhandledHandler("catch_all",
+                           dispatcher.createHeader(0xFF),
+                           [](const char* deviceName, const char* eventName, 
+                              const char* data, EventHeader& header) {
+    Serial.printf("Unhandled event: %s\n", eventName);
+});
 ```
 
 ## API Reference
 
-### Class: EventDispatcher
-
-#### Methods
-
-##### `EventDispatcher(uint8_t localAddr = 0x00)`
-Create an EventDispatcher instance
-- `localAddr`: Local device address for responses
-
-##### `void on(const char* eventName, EventCallback callback)`
-Register an event handler
-- `eventName`: Event to handle
-- `callback`: Function `void(const char* data, const EventHeader& header)`
-
-##### `static EventHeader createHeader(uint8_t receiverId, uint8_t groupId = 0x00)`
-Create message header
-- `receiverId`: Destination address
-- `groupId`: Group address
-- Returns: Configured EventHeader
-
-##### `static EventHeader createResponseHeader(const EventHeader& originalHeader)`
-Create response header
-- `originalHeader`: Original message header
-- Returns: Header configured for response
-
-### Class: EventMsg
-
-#### Methods
-
-##### `bool init(WriteCallback cb)`
-
-Initialize the EventMsg instance with a write callback
-- `cb`: Function to handle data transmission
-- Returns: `true` if initialization successful
-
-##### `void setAddr(uint8_t addr)`
-
-Set the local device address
-- `addr`: Device address (0x00-0xFF)
-
-##### `bool registerDispatcher(const char* deviceName, uint8_t receiverId, uint8_t groupId, EventDispatcherCallback cb)`
-
-Register a device-specific event dispatcher
-- `deviceName`: Unique identifier for the device
-- `receiverId`: Device address to listen for (0xFF for broadcast)
-- `groupId`: Group address to listen for (0x00 for no group)
-- `cb`: Callback function `void(const char* deviceName, const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver)`
-- Returns: `true` if registration successful
-
-##### `bool registerRawHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, RawDataCallback cb)`
-
-Register a raw data handler
-- `deviceName`: Unique identifier for the handler
-- `receiverId`: Device address to listen for (0xFF for broadcast)
-- `groupId`: Group address to listen for (0x00 for no group)
-- `cb`: Callback function `void(const char* deviceName, const char* event, uint8_t* data, size_t length)`
-- Returns: `true` if registration successful
-
-##### `void setUnhandledHandler(const char* deviceName, uint8_t receiverId, uint8_t groupId, RawDataCallback cb)`
-
-Set handler for unmatched events
-- `deviceName`: Unique identifier for the handler
-- `receiverId`: Device address to listen for (0xFF for broadcast)
-- `groupId`: Group address to listen for (0x00 for no group)
-- `cb`: Callback function `void(const char* deviceName, const char* event, uint8_t* data, size_t length)`
-
-Register a device-specific event dispatcher
-- `deviceName`: Unique identifier for the device
-- `receiverId`: Device address to listen for (0xFF for broadcast)
-- `groupId`: Group address to listen for (0x00 for no group)
-- `cb`: Callback function `void(const char* event, const char* data, uint8_t* header, uint8_t sender, uint8_t receiver)`
-- Returns: `true` if registration successful
-
-##### `bool unregisterDispatcher(const char* deviceName)`
-
-Remove a registered dispatcher
-- `deviceName`: Device identifier to remove
-- Returns: `true` if dispatcher was found and removed
-
-##### `size_t send(const char* name, const char* data, uint8_t recvAddr, uint8_t groupAddr, uint8_t flags)`
-
-Send an event message
-- `name`: Event name string
-- `data`: Event data string
-- `recvAddr`: Receiver address (0xFF for broadcast)
-- `groupAddr`: Group address (0x00 for no group)
-- `flags`: Message flags
-- Returns: Number of bytes sent, or 0 on failure
-
-##### `bool process(uint8_t* data, size_t len)`
-
-Process received data
-- `data`: Pointer to received data
-- `len`: Length of received data
-- Returns: `true` if valid message was processed
+See [docs/API.md](docs/API.md) for complete API documentation.
 
 ## Limitations
 
