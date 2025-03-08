@@ -3,6 +3,7 @@
 #include <EventDispatcher.h>
 
 EventMsg eventMsg;
+uint8_t serialSourceId;  // Source ID for serial input
 
 // Create dispatchers for different purposes
 EventDispatcher mainDispatcher(0x01);     // For main message handling
@@ -45,8 +46,12 @@ void setup() {
     Serial.begin(115200);
     while (!Serial) delay(10);
     
-    // Initialize EventMsg with Serial write callback
-    eventMsg.init([](uint8_t* data, size_t len) {
+    // Create serial source with appropriate buffer size
+    serialSourceId = eventMsg.createSource(256, 8);
+    Serial.printf("Created serial source (ID: %d) with 256B buffer\n", serialSourceId);
+    
+    // Set write callback separately
+    eventMsg.setWriteCallback([](uint8_t* data, size_t len) {
         return Serial.write(data, len) == len;
     });
     
@@ -76,7 +81,7 @@ void setup() {
 }
 
 void loop() {
-    // Process any incoming data
+    // Queue any incoming data
     while (Serial.available()) {
         char c = Serial.read();
         if (c == 't') {  // t[eventname] [eventdata]
@@ -88,10 +93,13 @@ void loop() {
             eventMsg.send(eventname.c_str(), eventdata.c_str(), header);
         }
         else {
-            // Process as protocol data
-            eventMsg.process((uint8_t*)&c, 1);
+            // Queue data for processing
+            sourceManager.pushToSource(serialSourceId, (uint8_t*)&c, 1);
         }
     }
+    
+    // Process all sources
+    eventMsg.processAllSources();
     
     // Send heartbeat every 5 seconds
     static unsigned long lastHeartbeat = 0;

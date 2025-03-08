@@ -5,6 +5,9 @@
 // Create EventMsg instance
 EventMsg eventMsg;
 
+// Source ID for serial data
+uint8_t serialSourceId;
+
 // Create dispatchers for different purposes
 EventDispatcher mainDispatcher(0x01);    // Local address 0x01
 EventDispatcher monitorDispatcher(0x01); // For monitoring
@@ -21,14 +24,13 @@ void monitorCallback(const char* data, EventHeader& header) {
     Serial.printf("Data: %s\n", data);
 }
 
-// Setup event handlers using the new dispatcher interface
+// Setup event handlers using the dispatcher interface
 void setupHandlers() {
     // LED control handler
     mainDispatcher.on("LED_CONTROL", [](const char* data, EventHeader& header) {
         bool state = (data[0] == '1');
         digitalWrite(LED_PIN, state);
         
-        // Create response header automatically setting correct sender/receiver
         auto responseHeader = mainDispatcher.createResponseHeader(header);
         char response[32];
         snprintf(response, sizeof(response), "LED is now %s", state ? "ON" : "OFF");
@@ -42,7 +44,7 @@ void setupHandlers() {
     });
     
     // Monitor handler
-    monitorDispatcher.on("*", monitorCallback); // Catch all events for monitoring
+    monitorDispatcher.on("*", monitorCallback);
     
     // Unhandled events handler
     unhandledDispatcher.on("*", [](const char* data, EventHeader& header) {
@@ -61,22 +63,22 @@ void setup() {
     // Configure LED pin
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
+
+    // Create serial source with appropriate buffer size
+    serialSourceId = eventMsg.createSource(256, 8);
+    Serial.printf("Created serial source (ID: %d) with 256B buffer\n", serialSourceId);
     
-    // Initialize EventMsg with Serial write callback
-    eventMsg.init([](uint8_t* data, size_t len) {
+    // Set write callback separately
+    eventMsg.setWriteCallback([](uint8_t* data, size_t len) {
         return Serial.write(data, len) == len;
     });
     
     // Set up handlers
     setupHandlers();
     
-    // Register dispatchers with EventMsg using simplified header creation
+    // Register dispatchers with EventMsg
     eventMsg.registerDispatcher("main", 
                               mainDispatcher.createHeader(0x01), // Direct messages
-                              mainDispatcher.getHandler());
-                              
-    eventMsg.registerDispatcher("broadcast", 
-                              mainDispatcher.createHeader(0xFF), // Broadcast messages
                               mainDispatcher.getHandler());
                               
     eventMsg.registerDispatcher("monitor", 
@@ -95,11 +97,14 @@ void setup() {
 }
 
 void loop() {
-    // Process incoming serial data
+    // Queue incoming serial data
     while (Serial.available()) {
         uint8_t byte = Serial.read();
-        eventMsg.process(&byte, 1);
+        sourceManager.pushToSource(serialSourceId, &byte, 1);
     }
+
+    // Process all sources
+    eventMsg.processAllSources();
     
     // Send heartbeat every 5 seconds
     static unsigned long lastHeartbeat = 0;

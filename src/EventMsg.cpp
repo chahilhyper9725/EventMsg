@@ -2,8 +2,10 @@
 #include <string.h>
 
 bool EventMsg::init(WriteCallback cb) {
-    writeCallback = cb;
-    resetState();
+    setWriteCallback(cb);
+    for(int i = 0; i < sourceStates.size(); i++) {
+        resetState(i);
+    }
     unhandledHandler = nullptr;
     return true;
 }
@@ -17,14 +19,12 @@ void EventMsg::setGroup(uint8_t addr) {
 }
 
 bool EventMsg::registerDispatcher(const char* deviceName, const EventHeader& header, EventDispatcherCallback cb) {
-    // Check if dispatcher already exists
     for (const auto& dispatcher : dispatchers) {
         if (dispatcher.deviceName == deviceName) {
-            return false; // Dispatcher already exists
+            return false;
         }
     }
 
-    // Create new dispatcher with header info
     EventDispatcherInfo dispatcher{
         std::string(deviceName),
         cb,
@@ -47,14 +47,12 @@ bool EventMsg::unregisterDispatcher(const char* deviceName) {
 }
 
 bool EventMsg::registerRawHandler(const char* deviceName, const EventHeader& header, RawDataCallback cb) {
-    // Check if handler already exists
     for (const auto& handler : rawHandlers) {
         if (handler.deviceName == deviceName) {
-            return false; // Handler already exists
+            return false;
         }
     }
     
-    // Create new handler with header info
     RawDataHandler handler{
         std::string(deviceName),
         cb,
@@ -85,6 +83,12 @@ void EventMsg::setUnhandledHandler(const char* deviceName, const EventHeader& he
     unhandledHandler->receiverId = header.receiverId;
     unhandledHandler->senderId = header.senderId;
     unhandledHandler->groupId = header.groupId;
+}
+
+void EventMsg::processAllSources() {
+    sourceManager.processAll([this](uint8_t sourceId, uint8_t* data, size_t length) {
+        this->process(sourceId, data, length);
+    });
 }
 
 size_t EventMsg::ByteStuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen) {
@@ -139,118 +143,98 @@ size_t EventMsg::StringToBytes(const char* str, uint8_t* output, size_t outputMa
     return len;
 }
 
-size_t EventMsg::send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId,uint8_t senderId) {
+size_t EventMsg::send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId, uint8_t senderId) {
     EventHeader header = {
-        senderId,    // Local address as sender
-        receiverId,   // Destination address
-        groupId,      // Group address
-        0x00          // No flags
+        senderId,
+        receiverId,
+        groupId,
+        0x00
     };
     return send(name, data, header);
 }
 
 size_t EventMsg::send(const char* name, const char* data, uint8_t receiverId, uint8_t groupId=0x00) {
     EventHeader header = {
-        localAddr,    // Local address as sender
-        receiverId,         // Broadcast to all
+        localAddr,
+        receiverId,
         groupId,
-                0x00          // No flags
+        0x00
     };
     return send(name, data, header);
 }
 
-
-
-
 size_t EventMsg::send(const char* name, const char* data, const EventHeader& header) {
-    uint8_t tempBuf[MAX_EVENT_NAME_SIZE * 2];
-    uint8_t msgBuf[MAX_EVENT_DATA_SIZE * 2];
-    size_t pos = 0;
+    std::vector<uint8_t> tempBuf;
+    std::vector<uint8_t> msgBuf;
+    tempBuf.reserve(MAX_EVENT_NAME_SIZE * 2);
+    msgBuf.reserve(MAX_EVENT_DATA_SIZE * 2);
+    
+    msgBuf.push_back(SOH);
 
-    // Start message
-    msgBuf[pos++] = SOH;
-
-    // Create and stuff header bytes
     uint8_t headerBytes[] = {
-        header.senderId,                // Local address as sender
-        header.receiverId,        // Destination address
-        header.groupId,          // Group address
-        header.flags,            // Flags
+        header.senderId,
+        header.receiverId,
+        header.groupId,
+        header.flags,
         (uint8_t)(msgIdCounter >> 8),
         (uint8_t)(msgIdCounter & 0xFF)
     };
     msgIdCounter++;
 
-    size_t stuffedLen = ByteStuff(headerBytes, sizeof(headerBytes), tempBuf, sizeof(tempBuf));
+    tempBuf.resize(MAX_EVENT_NAME_SIZE * 2);
+    size_t stuffedLen = ByteStuff(headerBytes, sizeof(headerBytes), tempBuf.data(), tempBuf.size());
     if(stuffedLen == 0) return 0;
-    memcpy(&msgBuf[pos], tempBuf, stuffedLen);
-    pos += stuffedLen;
+    
+    msgBuf.insert(msgBuf.end(), tempBuf.begin(), tempBuf.begin() + stuffedLen);
+    msgBuf.push_back(STX);
 
-    // Add STX
-    msgBuf[pos++] = STX;
-
-    // Add event name
-    uint8_t eventNameBytes[MAX_EVENT_NAME_SIZE];
-    size_t eventNameLen = StringToBytes(name, eventNameBytes, sizeof(eventNameBytes));
+    std::vector<uint8_t> eventNameBytes(MAX_EVENT_NAME_SIZE);
+    size_t eventNameLen = StringToBytes(name, eventNameBytes.data(), eventNameBytes.size());
     if(eventNameLen == 0) return 0;
 
-    stuffedLen = ByteStuff(eventNameBytes, eventNameLen, tempBuf, sizeof(tempBuf));
+    stuffedLen = ByteStuff(eventNameBytes.data(), eventNameLen, tempBuf.data(), tempBuf.size());
     if(stuffedLen == 0) return 0;
-    memcpy(&msgBuf[pos], tempBuf, stuffedLen);
-    pos += stuffedLen;
+    
+    msgBuf.insert(msgBuf.end(), tempBuf.begin(), tempBuf.begin() + stuffedLen);
+    msgBuf.push_back(US);
 
-    // Add separator
-    msgBuf[pos++] = US;
-
-    // Add event data
-    uint8_t eventDataBytes[MAX_EVENT_DATA_SIZE];
-    size_t eventDataLen = StringToBytes(data, eventDataBytes, sizeof(eventDataBytes));
+    std::vector<uint8_t> eventDataBytes(MAX_EVENT_DATA_SIZE);
+    size_t eventDataLen = StringToBytes(data, eventDataBytes.data(), eventDataBytes.size());
     if(eventDataLen == 0) return 0;
 
-    stuffedLen = ByteStuff(eventDataBytes, eventDataLen, &msgBuf[pos], sizeof(msgBuf) - pos - 1);
+    tempBuf.resize(msgBuf.capacity() - msgBuf.size() - 1);
+    stuffedLen = ByteStuff(eventDataBytes.data(), eventDataLen, tempBuf.data(), tempBuf.size());
     if(stuffedLen == 0) return 0;
-    pos += stuffedLen;
+    
+    msgBuf.insert(msgBuf.end(), tempBuf.begin(), tempBuf.begin() + stuffedLen);
+    msgBuf.push_back(EOT);
 
-    // End message
-    msgBuf[pos++] = EOT;
-
-    // Send via callback
     if(writeCallback) {
-        if(writeCallback(msgBuf, pos)) {
-            return pos;
+        if(writeCallback(msgBuf.data(), msgBuf.size())) {
+            return msgBuf.size();
         }
     }
     return 0;
 }
 
-void EventMsg::resetState() {
-    state = ProcessState::WAITING_FOR_SOH;
-    currentBuffer = nullptr;
-    currentMaxLength = 0;
-    bufferPos = 0;
-    escapedMode = false;
-    
-    // Clear all buffers
-    memset(headerBuffer, 0, sizeof(headerBuffer));
-    memset(eventNameBuffer, 0, sizeof(eventNameBuffer));
-    memset(eventDataBuffer, 0, sizeof(eventDataBuffer));
+void EventMsg::resetState(uint8_t sourceId) {
+    auto& state = sourceStates[sourceId];
+    state.state = ProcessState::WAITING_FOR_SOH;
+    state.currentBuffer = nullptr;
+    state.bufferPos = 0;
+    state.escapedMode = false;
+    state.headerBuffer.clear();
+    state.eventNameBuffer.clear();
+    state.eventDataBuffer.clear();
 }
 
 bool EventMsg::isHandlerMatch(const EventHeader& header, uint8_t receiverId, uint8_t senderId, uint8_t groupId) {
-    // Check receiver match (accept if broadcast or matching)
     if (receiverId != BROADCAST_ADDR && 
         header.receiverId != BROADCAST_ADDR && 
         receiverId != header.receiverId) {
         return false;
     }
     
-    // Check sender match (accept if BROADCAST_SENDER or matching)
-    // if (senderId != BROADCAST_SENDER && 
-    //     senderId != header.senderId) {
-    //     return false;
-    // }
-    
-    // Check group match (accept if broadcast or matching)
     if (groupId != BROADCAST_ADDR &&
         header.groupId != BROADCAST_ADDR &&
         groupId != header.groupId) {
@@ -263,15 +247,12 @@ bool EventMsg::isHandlerMatch(const EventHeader& header, uint8_t receiverId, uin
 void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size_t length, EventHeader& header) {
     bool eventHandled = false;
 
-    // Process raw handlers first
     for (const auto& handler : rawHandlers) {
         if (handler.callback && isHandlerMatch(header, handler.receiverId, handler.senderId, handler.groupId)) {
-            // Call raw callback if matches filter criteria
             handler.callback(handler.deviceName.c_str(), data, length);
         }
     }
 
-    // Process event dispatchers
     for (const auto& dispatcher : dispatchers) {
         if (dispatcher.callback && isHandlerMatch(header, dispatcher.receiverId, dispatcher.senderId, dispatcher.groupId)) {
             dispatcher.callback(dispatcher.deviceName.c_str(), 
@@ -282,7 +263,6 @@ void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size
         }
     }
 
-    // Process unhandled events
     if (!eventHandled && unhandledHandler && unhandledHandler->callback &&
         isHandlerMatch(header, unhandledHandler->receiverId, unhandledHandler->senderId, unhandledHandler->groupId)) {
         unhandledHandler->callback(unhandledHandler->deviceName.c_str(),
@@ -292,99 +272,95 @@ void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size
     }
 }
 
-bool EventMsg::processNextByte(uint8_t byte) {
-    // Handle escape sequences
-    if (escapedMode) {
+bool EventMsg::processNextByte(uint8_t sourceId, uint8_t byte) {
+    auto& state = sourceStates[sourceId];
+    
+    if (state.escapedMode) {
         byte ^= 0x20;
-        escapedMode = false;
+        state.escapedMode = false;
     } else if (byte == ESC) {
-        escapedMode = true;
+        state.escapedMode = true;
         return true;
     }
     
-    // Process based on current state
-    switch (state) {
+    switch (state.state) {
         case ProcessState::WAITING_FOR_SOH:
             if (byte == SOH) {
-                state = ProcessState::READING_HEADER;
-                currentBuffer = headerBuffer;
-                currentMaxLength = MAX_HEADER_SIZE;
-                bufferPos = 0;
+                state.state = ProcessState::READING_HEADER;
+                state.headerBuffer.clear();
+                state.bufferPos = 0;
             }
             break;
 
         case ProcessState::READING_HEADER:
-            currentBuffer[bufferPos++] = byte;
-            if (bufferPos == currentMaxLength) {
+            state.headerBuffer.push_back(byte);
+            state.bufferPos++;
+            if (state.bufferPos == MAX_HEADER_SIZE) {
                 // Extract header info
-                uint8_t sender = headerBuffer[0];
-                uint8_t receiver = headerBuffer[1];
-                uint8_t group = headerBuffer[2];
-                uint8_t flags = headerBuffer[3];
-                uint16_t msgId = (headerBuffer[4] << 8) | headerBuffer[5];
+                uint8_t sender = state.headerBuffer[0];
+                uint8_t receiver = state.headerBuffer[1];
+                uint8_t group = state.headerBuffer[2];
+                uint8_t flags = state.headerBuffer[3];
+                uint16_t msgId = (state.headerBuffer[4] << 8) | state.headerBuffer[5];
 
                 DEBUG_PRINT("Header: sender=0x%02X, receiver=0x%02X, group=0x%02X, flags=0x%02X, msgId=%u",
                            sender, receiver, group, flags, msgId);
 
-                state = ProcessState::WAITING_FOR_STX;
+                state.state = ProcessState::WAITING_FOR_STX;
             }
             break;
 
         case ProcessState::WAITING_FOR_STX:
             if (byte == STX) {
-                state = ProcessState::READING_EVENT_NAME;
-                currentBuffer = eventNameBuffer;
-                currentMaxLength = MAX_EVENT_NAME_SIZE;
-                bufferPos = 0;
+                state.state = ProcessState::READING_EVENT_NAME;
+                state.eventNameBuffer.clear();
+                state.bufferPos = 0;
             } else {
-                return false; // Invalid sequence
+                return false;
             }
             break;
 
         case ProcessState::READING_EVENT_NAME:
             if (byte == US) {
-                // Null terminate event name
-                currentBuffer[bufferPos] = '\0';
-                DEBUG_PRINT("Event Name: %s (%d bytes)", currentBuffer, bufferPos);
+                state.eventNameBuffer.push_back('\0');
+                DEBUG_PRINT("Event Name: %s (%d bytes)", state.eventNameBuffer.data(), state.bufferPos);
                 
-                state = ProcessState::READING_EVENT_DATA;
-                currentBuffer = eventDataBuffer;
-                currentMaxLength = MAX_EVENT_DATA_SIZE;
-                bufferPos = 0;
+                state.state = ProcessState::READING_EVENT_DATA;
+                state.eventDataBuffer.clear();
+                state.bufferPos = 0;
             } else {
-                if (bufferPos >= currentMaxLength) {
-                    return false; // Name too long
+                if (state.bufferPos >= MAX_EVENT_NAME_SIZE) {
+                    return false;
                 }
-                currentBuffer[bufferPos++] = byte;
+                state.eventNameBuffer.push_back(byte);
+                state.bufferPos++;
             }
             break;
 
         case ProcessState::READING_EVENT_DATA:
             if (byte == EOT) {
-                // Message complete, process it
-                currentBuffer[bufferPos] = '\0';
+                state.eventDataBuffer.push_back('\0');
                 
-                // Create EventHeader from received data
                 EventHeader msgHeader = {
-                    headerBuffer[0], // sender
-                    headerBuffer[1], // receiver
-                    headerBuffer[2], // group
-                    headerBuffer[3]  // flags
+                    state.headerBuffer[0],
+                    state.headerBuffer[1],
+                    state.headerBuffer[2],
+                    state.headerBuffer[3]
                 };
 
-                // Process message through callbacks
-                processCallbacks((const char*)eventNameBuffer,
-                               currentBuffer,
-                               bufferPos,
+                DEBUG_PRINT("Event Data: (%d bytes)", state.bufferPos);
+                processCallbacks((const char*)state.eventNameBuffer.data(),
+                               state.eventDataBuffer.data(),
+                               state.bufferPos,
                                msgHeader);
                 
-                // Reset for next message
-                resetState();
+                resetState(sourceId);
             } else {
-                if (bufferPos >= currentMaxLength) {
-                    return false; // Data too long
+                if (state.bufferPos >= MAX_EVENT_DATA_SIZE) {
+                    return false;
                 }
-                currentBuffer[bufferPos++] = byte;
+                state.eventDataBuffer.push_back(byte);
+                state.bufferPos++;
             }
             break;
     }
@@ -392,10 +368,10 @@ bool EventMsg::processNextByte(uint8_t byte) {
     return true;
 }
 
-bool EventMsg::process(uint8_t* data, size_t len) {
+bool EventMsg::process(uint8_t sourceId, const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; i++) {
-        if (!processNextByte(data[i])) {
-            resetState();
+        if (!processNextByte(sourceId, data[i])) {
+            resetState(sourceId);
             return false;
         }
     }

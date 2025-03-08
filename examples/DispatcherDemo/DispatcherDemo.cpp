@@ -2,139 +2,88 @@
 #include "EventMsg.h"
 #include "EventDispatcher.h"
 
+// Create instances
 EventMsg eventMsg;
-
-// Create dispatchers for different device types
-EventDispatcher phoneDispatcher(0x01);    // For phone communication
-EventDispatcher nodeDispatcher(0x01);     // For ESP32 node communication
-EventDispatcher monitorDispatcher(0x01);  // For traffic monitoring
-EventDispatcher unhandledDispatcher(0x01); // For unhandled events
+uint8_t serialSourceId;  // Source ID for serial input
+EventDispatcher fileDispatcher(0x01);  // Initialize with local address
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
     
-    // Initialize event message system with serial write callback
-    eventMsg.init([](uint8_t* data, size_t len) {
-        Serial.write(data, len);
-        return true;
+    // Create serial source with appropriate buffer size
+    serialSourceId = eventMsg.createSource(256, 8);
+    Serial.printf("Created serial source (ID: %d) with 256B buffer\n", serialSourceId);
+    
+    // Set write callback separately
+    eventMsg.setWriteCallback([](uint8_t* data, size_t len) {
+        return Serial.write(data, len) == len;
     });
     
-    // Set up phone communication handlers
-    phoneDispatcher.on("ble_connect", [](const char* data, EventHeader& header) {
-        Serial.println("Processing BLE connection request");
+    // Register file operation handlers
+    fileDispatcher.on("deleteFile", [](const char* data, EventHeader& header) {
+        Serial.printf("Deleting file: %s\n", data);
         
-        // Send response using helper
-        auto responseHeader = phoneDispatcher.createResponseHeader(header);
-        eventMsg.send("ble_status", "connected", responseHeader);
+        // Create response header automatically
+        auto responseHeader = fileDispatcher.createResponseHeader(header);
+        eventMsg.send("fileDeleted", "success", responseHeader);
     });
     
-    phoneDispatcher.on("send_lua", [](const char* data, EventHeader& header) {
-        Serial.println("Receiving Lua code via BLE");
-        Serial.printf("Code: %s\n", data);
+    fileDispatcher.on("renameFile", [](const char* data, EventHeader& header) {
+        Serial.printf("Renaming file: %s\n", data);
         
-        auto responseHeader = phoneDispatcher.createResponseHeader(header);
-        eventMsg.send("lua_status", "received", responseHeader);
+        // Create response header automatically
+        auto responseHeader = fileDispatcher.createResponseHeader(header);
+        eventMsg.send("fileRenamed", "success", responseHeader);
     });
     
-    // Set up ESP32 node handlers
-    nodeDispatcher.on("espnow_forward", [](const char* data, EventHeader& header) {
-        Serial.println("Forwarding message to ESP-NOW network");
+    fileDispatcher.on("listFiles", [](const char* data, EventHeader& header) {
+        Serial.println("Listing files in directory");
         
-        // Create broadcast header for forwarding
-        auto broadcastHeader = nodeDispatcher.createHeader(0xFF);
-        eventMsg.send("forward", data, broadcastHeader);
-    });
-    
-    nodeDispatcher.on("broadcast_cmd", [](const char* data, EventHeader& header) {
-        Serial.println("Broadcasting command to all nodes");
-        Serial.printf("Command: %s\n", data);
+        // Example directory listing response
+        const char* fileList = "file1.txt,file2.txt,data.bin";
         
-        // Send acknowledgment back to sender
-        auto responseHeader = nodeDispatcher.createResponseHeader(header);
-        eventMsg.send("cmd_ack", "received", responseHeader);
+        // Create response header automatically
+        auto responseHeader = fileDispatcher.createResponseHeader(header);
+        eventMsg.send("fileList", fileList, responseHeader);
     });
     
-    // Set up monitoring for all traffic
-    monitorDispatcher.on("*", [](const char* data, EventHeader& header) {
-        Serial.printf("=== Monitor Traffic ===\n");
-        Serial.printf("From: 0x%02X, To: 0x%02X, Group: 0x%02X\n", 
-                     header.senderId, header.receiverId, header.groupId);
-        Serial.printf("Data: %s\n", data);
-    });
+    // Register dispatcher with EventMsg using helper
+    eventMsg.registerDispatcher("fileHandler", 
+                              fileDispatcher.createHeader(0x01),  // Only handle direct messages
+                              fileDispatcher.getHandler());
     
-    // Set up unhandled event handler
-    unhandledDispatcher.on("*", [](const char* data, EventHeader& header) {
-        Serial.printf("=== Unhandled Event ===\n");
-        Serial.printf("From: 0x%02X, To: 0x%02X, Group: 0x%02X\n", 
-                     header.senderId, header.receiverId, header.groupId);
-        Serial.printf("Data: %s\n", data);
-        Serial.println("Message was not processed by any dispatcher");
-    });
+    Serial.println("File operation handler ready!");
+    Serial.println("Available commands:");
+    Serial.println("1. deleteFile <filename>");
+    Serial.println("2. renameFile <oldname>:<newname>");
+    Serial.println("3. listFiles <directory>");
     
-    // Register dispatchers with EventMsg using proper headers
-    eventMsg.registerDispatcher("phone1", 
-                              phoneDispatcher.createHeader(0x01),  // Phone messages
-                              phoneDispatcher.getHandler());
-                              
-    eventMsg.registerDispatcher("nodes", 
-                              nodeDispatcher.createHeader(0xFF),   // All nodes
-                              nodeDispatcher.getHandler());
-                              
-    eventMsg.registerDispatcher("group1", 
-                              nodeDispatcher.createHeader(0xFF, 0x01),  // Group 1
-                              nodeDispatcher.getHandler());
-                              
-    eventMsg.registerDispatcher("monitor", 
-                              monitorDispatcher.createHeader(0xFF),  // All traffic
-                              monitorDispatcher.getHandler());
-                              
-    // Set handler for unmatched events
-    eventMsg.setUnhandledHandler("unhandled", 
-                                unhandledDispatcher.createHeader(0xFF),
-                                unhandledDispatcher.getHandler());
-    
-    // Test sending messages
-    Serial.println("Sending test messages...\n");
-    
-    // Direct message to phone
-    {
-        auto header = phoneDispatcher.createHeader(0x01);
-        eventMsg.send("ble_connect", "request_conn", header);
-    }
-    delay(100);
-    
-    // Broadcast to all nodes
-    {
-        auto header = nodeDispatcher.createHeader(0xFF);
-        eventMsg.send("broadcast_cmd", "status_request", header);
-    }
-    delay(100);
-    
-    // Message to Group 1
-    {
-        auto header = nodeDispatcher.createHeader(0xFF, 0x01);
-        eventMsg.send("group_msg", "hello group 1", header);
-    }
+    // Send startup notification
+    auto header = fileDispatcher.createHeader(0xFF); // Broadcast
+    eventMsg.send("fileHandler", "ready", header);
 }
 
 void loop() {
     // Process any incoming serial data
     while (Serial.available()) {
-        uint8_t data = Serial.read();
-        eventMsg.process(&data, 1);
+        uint8_t byte = Serial.read();
+        sourceManager.pushToSource(serialSourceId, &byte, 1);
     }
     
-    // Send heartbeat every 5 seconds
-    static unsigned long lastHeartbeat = 0;
-    if (millis() - lastHeartbeat >= 5000) {
-        char data[32];
-        snprintf(data, sizeof(data), "Uptime: %lus", millis() / 1000);
+    // Process all sources
+    eventMsg.processAllSources();
+    
+    // Send status update every 10 seconds
+    static unsigned long lastStatus = 0;
+    if (millis() - lastStatus >= 10000) {
+        char status[32];
+        snprintf(status, sizeof(status), "Uptime: %lus", millis() / 1000);
         
-        // Use broadcast header for heartbeat
-        auto header = phoneDispatcher.createHeader(0xFF);
-        eventMsg.send("HEARTBEAT", data, header);
+        // Create broadcast header for status update
+        auto header = fileDispatcher.createHeader(0xFF);
+        eventMsg.send("fileStatus", status, header);
         
-        lastHeartbeat = millis();
+        lastStatus = millis();
     }
 }

@@ -1,27 +1,67 @@
 {
     "name": "EventMsg",
     "version": "1.0.0",
-    "description": "A lightweight event-based messaging protocol library for ESP32 and Arduino",
-    "keywords": "protocol, messaging, events, communication, esp32, arduino",
+    "description": "Event-based messaging protocol library with configurable sources and thread-safe queues",
+    "keywords": "communication, protocol, event, dispatcher, queue, ble, uart",
     "repository": {
         "type": "git",
-        "url": "https://github.com/chahilhyper9725/EventMsg.git"
+        "url": "https://github.com/hyperlab/eventmsg.git"
     },
     "authors": [
         {
-            "name": "Chahil Patel",
-            "email": "Chahil9725@gmail.com",
+            "name": "HyperLab",
+            "email": "dev@hyperlab.com",
             "maintainer": true
         }
     ],
     "license": "MIT",
-    "frameworks": ["arduino", "espidf"],
-    "platforms": ["espressif32"],
-    "dependencies": {
-        "arduino-esp32": "^2.0.0"
-    },
+    "frameworks": "arduino",
+    "platforms": "espressif32",
     "build": {
-        "includeDir": "include"
+        "flags": [
+            "-std=gnu++17",
+            "-DENABLE_EVENT_DEBUG_LOGS=1"
+        ],
+        "unflags": [
+            "-std=gnu++11"
+        ],
+        "libArchive": false,
+        "extraScript": "prebuild.py"
     },
-    "headers": ["EventMsg.h"]
+    "dependencies": {
+        "AsyncTCP": "^1.1.1"
+    },
+    "export": {
+        "include": [
+            "src/*",
+            "include/*",
+            "examples/*",
+            "docs/*",
+            "library.json",
+            "library.properties",
+            "LICENSE",
+            "README.md"
+        ]
+    },
+    "examples": [
+        {
+            "name": "Basic Event Demo",
+            "base": "examples/Basic",
+            "files": ["SimpleEventDemo.cpp"]
+        },
+        {
+            "name": "BLE Communication",
+            "base": "examples/BLE_ESP32",
+            "files": ["BLE_ESP32.cpp", "BLE_ConfigurableDemo.cpp"]
+        },
+        {
+            "name": "Multi Source Demo",
+            "base": "examples/MultiSourceDemo",
+            "files": ["MultiSourceDemo.cpp"]
+        }
+    ],
+    "headers": [
+        "EventMsg.h",
+        "EventDispatcher.h"
+    ]
 }

@@ -4,14 +4,18 @@
 
 // Create instances
 EventMsg eventMsg;
+uint8_t serialSourceId;  // Source ID for serial input
 EventDispatcher fileDispatcher(0x01);  // Initialize with local address
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
     
-    // Initialize EventMsg
-    eventMsg.init([](uint8_t* data, size_t len) {
+    // Create serial source with appropriate buffer size
+    serialSourceId = eventMsg.createSource(256, 8);
+    
+    // Set write callback separately
+    eventMsg.setWriteCallback([](uint8_t* data, size_t len) {
         return Serial.write(data, len) == len;
     });
     
@@ -49,6 +53,7 @@ void setup() {
                               fileDispatcher.getHandler());
     
     Serial.println("File operation handler ready!");
+    Serial.printf("Serial source created with ID: %d\n", serialSourceId);
     Serial.println("Available commands:");
     Serial.println("1. deleteFile <filename>");
     Serial.println("2. renameFile <oldname>:<newname>");
@@ -63,8 +68,11 @@ void loop() {
     // Process any incoming serial data
     while (Serial.available()) {
         uint8_t byte = Serial.read();
-        eventMsg.process(&byte, 1);
+        sourceManager.pushToSource(serialSourceId, &byte, 1);
     }
+    
+    // Process all sources
+    eventMsg.processAllSources();
     
     // Send status update every 10 seconds
     static unsigned long lastStatus = 0;

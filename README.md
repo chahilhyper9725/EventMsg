@@ -11,6 +11,9 @@ A lightweight event-based messaging protocol library for ESP32 and Arduino platf
 - 🛡️ Buffer overflow protection
 - 🧩 Event-based architecture with full context support
 - 📚 Comprehensive documentation
+- 🔀 Multi-source message handling with independent queues
+- 🔒 Thread-safe queue operations for interrupt safety
+- 📦 Fixed-size buffers to prevent heap fragmentation
 
 ## Installation
 
@@ -31,6 +34,44 @@ lib_deps =
 
 ## Quick Start
 
+### Multi-Source Message Handling
+
+EventMsg now supports handling messages from multiple sources independently with a queue-based system:
+
+```cpp
+// Define source IDs
+#define BLE_SOURCE_ID 1
+#define UART_SOURCE_ID 2
+#define NETWORK_SOURCE_ID 3
+
+// Create and configure sources
+uint8_t bleSourceId = eventMsg.createSource(1024, 16);  // BLE source
+uint8_t uartSourceId = eventMsg.createSource(256, 8);   // UART source
+
+// Queue data from any source (e.g., in an interrupt/callback)
+void onBleData(const uint8_t* data, size_t len) {
+    bool queued = sourceManager.pushToSource(bleSourceId, data, len);
+    if (!queued) {
+        // Handle queue full or packet too large
+    }
+}
+
+// Process all sources in main loop
+void loop() {
+    // One call to process all sources
+    eventMsg.processAllSources();
+}
+```
+
+Features:
+- 🔄 Independent processing per source
+- 🛡️ Thread-safe queue operations
+- 📦 Fixed-size buffers (no heap fragmentation)
+- ⚡ Interrupt-safe data reception
+- 🔍 Source-specific error tracking
+
+See [docs/QUEUE_IMPLEMENTATION.md](docs/QUEUE_IMPLEMENTATION.md) for detailed documentation of the multi-source system.
+
 ### Using EventDispatcher
 
 The primary way to handle events is using the EventDispatcher class:
@@ -43,8 +84,11 @@ EventMsg eventMsg;
 EventDispatcher mainDispatcher(0x01);  // Initialize with local address
 
 void setup() {
-    // Initialize EventMsg
-    eventMsg.init([](uint8_t* data, size_t len) {
+    // Configure serial communication source
+    serialSourceId = eventMsg.createSource(256, 8);
+
+    // Set write callback separately
+    eventMsg.setWriteCallback([](uint8_t* data, size_t len) {
         return Serial.write(data, len) == len;
     });
     
@@ -181,16 +225,22 @@ eventMsg.registerDispatcher("sensor",
 - Event name buffer: 32 bytes
 - Event data buffer: 2048 bytes
 - Header buffer: 6 bytes
-- Total fixed buffers: ~2.1KB
+- Source Queues: 8 * 512 bytes per source
+- Source States: ~100 bytes per source
+- Total fixed buffers: ~4.2KB per source + 2.1KB base
 
 ### Dynamic Memory
 - Each dispatcher: ~32 bytes (name + callback)
 - Each raw handler: ~32 bytes (name + callback)
 - Message processing: No dynamic allocation
+- Queue operations: No dynamic allocation
+- Thread synchronization: 1 mutex per source queue
 
 ### Processing Overhead
 - Byte stuffing: 1-2 cycles per byte
 - Handler lookup: O(n) where n = number of handlers
+- Queue operations: O(1) for push/pop
+- Multiple source processing: Parallel capable
 - Total overhead: ~10μs per byte on ESP32 @ 240MHz
 
 ## Protocol Details
@@ -214,6 +264,9 @@ The library comes with web-based tools to help with development and debugging:
 - **BLE Tester** ([docs/webtools/ble-tester.html](docs/webtools/ble-tester.html))
 
 ## Advanced Examples
+
+### Multi-Source Processing
+See [examples/MultiSourceDemo](examples/MultiSourceDemo) for a complete example of handling messages from multiple sources with independent queues.
 
 ### BLE Communication
 See [examples/BLE_ESP32](examples/BLE_ESP32) for a complete BLE example using multiple dispatchers.
@@ -254,6 +307,10 @@ See [docs/API.md](docs/API.md) for complete API documentation.
 - Maximum event data size: 2048 bytes
 - Maximum header size: 6 bytes
 - Maximum number of dispatchers: Limited by available memory
+- Maximum packet size per source: 512 bytes
+- Maximum queue slots per source: 8 packets
+- Maximum number of sources: 4
+- Queue memory per source: ~4.2KB fixed allocation
 
 ## License
 

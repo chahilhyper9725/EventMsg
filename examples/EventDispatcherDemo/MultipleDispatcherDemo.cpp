@@ -8,6 +8,12 @@
 
 EventMsg eventMsg;
 
+// Source IDs for different subsystems
+uint8_t serialSourceId;   // For serial input
+uint8_t fileSourceId;     // For file operations
+uint8_t sensorSourceId;   // For sensor data
+uint8_t networkSourceId;  // For network operations
+
 // Create multiple dispatchers for different subsystems
 EventDispatcher fileDispatcher(DEVICE01);    // File operations
 EventDispatcher sensorDispatcher(DEVICE01);  // Sensor handling
@@ -17,8 +23,14 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
     
-    // Initialize EventMsg
-    eventMsg.init([](uint8_t* data, size_t len) {
+    // Create sources with appropriate buffer sizes
+    serialSourceId = eventMsg.createSource(256, 8);     // Serial input
+    fileSourceId = eventMsg.createSource(1024, 8);      // Large for file ops
+    sensorSourceId = eventMsg.createSource(64, 4);      // Small for sensor data
+    networkSourceId = eventMsg.createSource(512, 16);   // Medium for network
+    
+    // Set write callback separately
+    eventMsg.setWriteCallback([](uint8_t* data, size_t len) {
         return Serial.write(data, len) == len;
     });
     
@@ -78,22 +90,14 @@ void setup() {
                               networkDispatcher.createHeader(DEVICEBROADCAST), 
                               networkDispatcher.getHandler());
     
-    // Send startup notifications
-    {
-        auto header = fileDispatcher.createHeader(DEVICEBROADCAST);
-        eventMsg.send("subsystem_ready", "file_handler", header);
-    }
-    {
-        auto header = sensorDispatcher.createHeader(DEVICEBROADCAST);
-        eventMsg.send("subsystem_ready", "sensor_handler", header);
-    }
-    {
-        auto header = networkDispatcher.createHeader(DEVICEBROADCAST);
-        eventMsg.send("subsystem_ready", "network_handler", header);
-    }
-    
+    // Print source configuration
     Serial.println("Multiple dispatcher demo ready!");
-    Serial.println("Available commands:");
+    Serial.printf("Serial source ID: %d (256B, 8 slots)\n", serialSourceId);
+    Serial.printf("File source ID: %d (1KB, 8 slots)\n", fileSourceId);
+    Serial.printf("Sensor source ID: %d (64B, 4 slots)\n", sensorSourceId);
+    Serial.printf("Network source ID: %d (512B, 16 slots)\n", networkSourceId);
+    
+    Serial.println("\nAvailable commands:");
     Serial.println("1. deleteFile <filename>");
     Serial.println("2. renameFile <oldname:newname>");
     Serial.println("3. readTemp");
@@ -110,25 +114,31 @@ void loop() {
             String command = Serial.readStringUntil(' ');
             String data = Serial.readStringUntil('\n');
             
-            // Choose appropriate dispatcher based on command type
+            // Queue data to appropriate source
+            uint8_t sourceId;
+            
             if (command == "deleteFile" || command == "renameFile") {
-                auto header = fileDispatcher.createHeader(DEVICE01);
-                eventMsg.send(command.c_str(), data.c_str(), header);
+                sourceId = fileSourceId;
             }
             else if (command == "readTemp" || command == "readHumidity") {
-                auto header = sensorDispatcher.createHeader(DEVICE01);
-                eventMsg.send(command.c_str(), "request", header);
+                sourceId = sensorSourceId;
             }
-            else if (command == "forward" || command == "ping") {
-                auto header = networkDispatcher.createHeader(DEVICEBROADCAST);
-                eventMsg.send(command.c_str(), data.c_str(), header);
+            else {
+                sourceId = networkSourceId;
             }
+            
+            // Create command packet
+            char packet[256];
+            snprintf(packet, sizeof(packet), "%s:%s", command.c_str(), data.c_str());
+            sourceManager.pushToSource(sourceId, (uint8_t*)packet, strlen(packet));
         }
         else {
-            // Process as protocol data
-            eventMsg.process((uint8_t*)&c, 1);
+            sourceManager.pushToSource(serialSourceId, (uint8_t*)&c, 1);
         }
     }
+    
+    // Process all sources
+    eventMsg.processAllSources();
     
     // Send periodic status updates from each subsystem
     static unsigned long lastStatus = 0;
