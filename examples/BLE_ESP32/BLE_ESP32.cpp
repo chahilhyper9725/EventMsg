@@ -84,6 +84,8 @@ void setup() {
 
     // Create BLE source with large buffer for BLE packets
     bleSourceId = eventMsg.createSource(1024, 16);
+   eventMsg.createSource(1024, 16);
+    // eventMsg.createSource(1024, 16);
     Serial.printf("Created BLE source (ID: %d) with 1KB buffer, 16 slots\n", bleSourceId);
 
     // Initialize NimBLE
