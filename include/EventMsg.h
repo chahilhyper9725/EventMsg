@@ -7,6 +7,73 @@
 #include <array>
 #include <map>
 #include <string>
+// Debug print macro definition
+// #if ENABLE_EVENT_DEBUG_LOGS
+// #define DEBUG_PRINT(msg, ...) \
+//     do { \
+//         Serial.printf("[%lu][EventMsg] ", millis()); \
+//         Serial.printf(msg "\n", ##__VA_ARGS__); \
+//     } while(0)
+// #else
+#define DEBUG_PRINT(msg, ...) 
+// #endif
+
+// PSRAM Support
+#ifdef ESP32
+#include <esp_heap_caps.h>
+
+// Check if PSRAM is enabled via ESP-IDF config
+#if CONFIG_SPIRAM_SUPPORT
+#define EVENT_MSG_PSRAM_ENABLED 1
+#else
+#define EVENT_MSG_PSRAM_ENABLED 0
+#endif
+
+// Simple PSRAM allocation macros
+#define EVENT_MSG_MALLOC(size) \
+    (EVENT_MSG_PSRAM_ENABLED ? heap_caps_malloc(size, MALLOC_CAP_SPIRAM) : malloc(size))
+
+#define EVENT_MSG_FREE(ptr) free(ptr)
+
+#else
+// For non-ESP32 platforms
+#define EVENT_MSG_PSRAM_ENABLED 0
+#define EVENT_MSG_MALLOC(size) malloc(size)
+#define EVENT_MSG_FREE(ptr) free(ptr)
+#endif
+
+// Custom allocator for std::vector that uses PSRAM when available
+template <typename T>
+class PSRAMAllocator {
+public:
+    using value_type = T;
+    
+    PSRAMAllocator() = default;
+    template <typename U> PSRAMAllocator(const PSRAMAllocator<U>&) {}
+    
+    T* allocate(std::size_t n) {
+#if EVENT_MSG_PSRAM_ENABLED
+        if (void* ptr = heap_caps_malloc(n * sizeof(T), MALLOC_CAP_SPIRAM)) {
+            return static_cast<T*>(ptr);
+        }
+#endif
+        return static_cast<T*>(malloc(n * sizeof(T)));
+    }
+    
+    void deallocate(T* p, std::size_t) {
+        free(p);
+    }
+};
+
+template <typename T, typename U>
+bool operator==(const PSRAMAllocator<T>&, const PSRAMAllocator<U>&) { return true; }
+
+template <typename T, typename U>
+bool operator!=(const PSRAMAllocator<T>&, const PSRAMAllocator<U>&) { return false; }
+
+// Define vector types that use PSRAM when available
+template <typename T>
+using PSRAMVector = std::vector<T, PSRAMAllocator<T>>;
 
 struct RawPacket {
     static const size_t MAX_SIZE = 512;
@@ -24,41 +91,84 @@ private:
     mutable size_t head = 0;          // Must be mutable for const methods
     mutable size_t tail = 0;
     mutable bool full = false;
+    mutable bool initialized = false;
 
 public:
-    ThreadSafeQueue() {
-        mutex = xSemaphoreCreateMutex();
+    ThreadSafeQueue() : mutex(nullptr) {
+        initialize();
     }
 
     ~ThreadSafeQueue() {
-        vSemaphoreDelete(mutex);
+        if (mutex != nullptr) {
+            vSemaphoreDelete(mutex);
+            mutex = nullptr;
+        }
+    }
+    
+    void initialize() {
+        // Use a critical section to ensure thread-safe initialization
+        portENTER_CRITICAL(&mux);
+        if (!initialized) {
+            if (mutex == nullptr) {
+                mutex = xSemaphoreCreateMutex();
+                if (mutex != nullptr) {
+                    initialized = true;
+                    DEBUG_PRINT("ThreadSafeQueue mutex initialized successfully");
+                } else {
+                    DEBUG_PRINT("Failed to create ThreadSafeQueue mutex");
+                }
+            }
+        }
+        portEXIT_CRITICAL(&mux);
     }
 
+private:
+    // Mutex for protecting initialization
+    static portMUX_TYPE mux;
+
+public:
     bool push(const uint8_t* data, size_t len, uint8_t sourceId) const {
         if (len > RawPacket::MAX_SIZE) return false;
         
-        xSemaphoreTake(mutex, portMAX_DELAY);
-        
-        if (full) {
-            xSemaphoreGive(mutex);
+        // Ensure mutex is initialized
+        if (mutex == nullptr) {
+            DEBUG_PRINT("ThreadSafeQueue::push - mutex not initialized");
             return false;
         }
+        
+        if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            DEBUG_PRINT("ThreadSafeQueue::push - failed to take mutex");
+            return false;
+        }
+        
+        bool success = false;
+        if (!full) {
+            RawPacket& packet = const_cast<RawPacket&>(buffer[tail]);
+            packet.sourceId = sourceId;
+            packet.timestamp = millis();
+            packet.length = len;
+            memcpy(packet.data, data, len);
 
-        RawPacket& packet = const_cast<RawPacket&>(buffer[tail]);
-        packet.sourceId = sourceId;
-        packet.timestamp = millis();
-        packet.length = len;
-        memcpy(packet.data, data, len);
-
-        tail = (tail + 1) % QUEUE_SIZE;
-        full = (tail == head);
+            tail = (tail + 1) % QUEUE_SIZE;
+            full = (tail == head);
+            success = true;
+        }
         
         xSemaphoreGive(mutex);
-        return true;
+        return success;
     }
 
+public:
     bool tryPop(RawPacket& packet) const {
-        if (!xSemaphoreTake(mutex, 0)) {
+        // Ensure mutex is initialized
+        if (mutex == nullptr) {
+            DEBUG_PRINT("ThreadSafeQueue::tryPop - mutex not initialized");
+            return false;
+        }
+        
+        // Try to take the mutex with a timeout
+        if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            DEBUG_PRINT("ThreadSafeQueue::tryPop - failed to take mutex");
             return false;
         }
 
@@ -66,23 +176,21 @@ public:
         if (head != tail || full) {
             // Thread-safe read from const buffer
             packet = buffer[head];
-            // These must be mutable since they affect internal state
             head = (head + 1) % QUEUE_SIZE;
             full = false;
             success = true;
             
-            // Update approximate metrics
-            if (success) {
-                droppedPackets += packet.timestamp < lastProcessed ? 1 : 0;
-                lastProcessed = packet.timestamp;
-                processedPackets++;
-            }
+            // Update metrics
+            droppedPackets += packet.timestamp < lastProcessed ? 1 : 0;
+            lastProcessed = packet.timestamp;
+            processedPackets++;
         }
 
         xSemaphoreGive(mutex);
         return success;
     }
 
+private:
     // Queue status methods - all const
     size_t size() const {
         xSemaphoreTake(mutex, portMAX_DELAY);
@@ -122,24 +230,42 @@ public:
         ThreadSafeQueue queue;
         SourceConfig config;
         Source() = default;
-        Source(const SourceConfig& c) : config(c) {}
+        Source(const SourceConfig& c) : config(c) {
+            // Ensure queue is initialized
+            queue.initialize();
+        }
     };
 
     uint8_t createSource(size_t bufferSize = 512, size_t queueSize = 8) {
         uint8_t sourceId = nextSourceId++;
         sources[sourceId] = Source(SourceConfig(bufferSize, queueSize));
+        DEBUG_PRINT("Created source ID %d with buffer size %d and queue size %d", 
+                   sourceId, bufferSize, queueSize);
         return sourceId;
     }
 
     bool pushToSource(uint8_t sourceId, const uint8_t* data, size_t len) const {
         auto it = sources.find(sourceId);
-        if (it == sources.end()) return false;
+        if (it == sources.end()) {
+            DEBUG_PRINT("pushToSource: Source ID %d not found", sourceId);
+            return false;
+        }
         return it->second.queue.push(data, len, sourceId);
     }
 
     template<typename ProcessFunc>
     void processAll(ProcessFunc&& func) const {
-        for(const auto& [sourceId, source] : sources) {
+        // If no sources, return early
+        if (sources.empty()) {
+            DEBUG_PRINT("processAll: No sources to process");
+            return;
+        }
+        
+        // Avoid using structured bindings (C++17 feature)
+        for(auto it = sources.begin(); it != sources.end(); ++it) {
+            uint8_t sourceId = it->first;
+            const Source& source = it->second;
+            
             RawPacket packet;
             while(source.queue.tryPop(packet)) {
                 func(sourceId, packet.data, packet.length);
@@ -150,14 +276,18 @@ public:
     bool hasSource(uint8_t sourceId) const {
         return sources.find(sourceId) != sources.end();
     }
+    
+    size_t getSourceCount() const {
+        return sources.size();
+    }
 
 private:
     mutable std::map<uint8_t, Source> sources;
     uint8_t nextSourceId = 1;
 };
 
-// Global source queue manager
-inline SourceQueueManager sourceManager;
+// Global source queue manager - avoid inline (C++17 feature)
+extern SourceQueueManager sourceManager;
 
 struct EventHeader {
     uint8_t senderId;
@@ -181,16 +311,6 @@ struct EventHeader {
 // Broadcast definitions
 #define BROADCAST_ADDR 0xFF    // For both receiver and group
 #define BROADCAST_SENDER 0xFF  // Accept all senders
-
-#if ENABLE_EVENT_DEBUG_LOGS
-#define DEBUG_PRINT(msg, ...) \
-    do { \
-        Serial.printf("[%lu][EventMsg] ", millis()); \
-        Serial.printf(msg "\n", ##__VA_ARGS__); \
-    } while(0)
-#else
-#define DEBUG_PRINT(msg, ...) 
-#endif
 
 // Function type for data transmission
 using WriteCallback = std::function<bool(uint8_t*, size_t)>;
@@ -220,7 +340,20 @@ struct EventDispatcherInfo {
 class EventMsg {
 public:
     uint8_t createSource(size_t bufferSize = 512, size_t queueSize = 8) {
-        return sourceManager.createSource(bufferSize, queueSize);
+        uint8_t sourceId = sourceManager.createSource(bufferSize, queueSize);
+        // Ensure source ID is valid for state tracking
+        if (sourceId < sourceStates.size()) {
+            resetState(sourceId);
+        }
+        return sourceId;
+    }
+    
+    // Create a default source if none exists
+    void ensureDefaultSource() {
+        if (sourceManager.getSourceCount() == 0) {
+            DEBUG_PRINT("Creating default source");
+            createSource(256, 8);  // Default size
+        }
     }
 
     void setWriteCallback(WriteCallback cb) {
@@ -242,9 +375,9 @@ private:
     // Per-source state management
     struct ProcessingState {
         ProcessState state = ProcessState::WAITING_FOR_SOH;
-        std::vector<uint8_t> headerBuffer;
-        std::vector<uint8_t> eventNameBuffer;
-        std::vector<uint8_t> eventDataBuffer;
+        PSRAMVector<uint8_t> headerBuffer;
+        PSRAMVector<uint8_t> eventNameBuffer;
+        PSRAMVector<uint8_t> eventDataBuffer;
         uint8_t* currentBuffer = nullptr;
         size_t bufferPos = 0;
         bool escapedMode = false;
@@ -261,8 +394,8 @@ private:
     uint8_t groupAddr;
     uint16_t msgIdCounter;
     WriteCallback writeCallback;
-    std::vector<EventDispatcherInfo> dispatchers;
-    std::vector<RawDataHandler> rawHandlers;
+    PSRAMVector<EventDispatcherInfo> dispatchers;
+    PSRAMVector<RawDataHandler> rawHandlers;
     EventDispatcherInfo* unhandledHandler;
 
     // State machine per source
@@ -277,7 +410,29 @@ private:
     size_t StringToBytes(const char* str, uint8_t* output, size_t outputMaxLen);
 
 public:
-    EventMsg() : localAddr(0), groupAddr(0), msgIdCounter(0), unhandledHandler(nullptr) {}
+    EventMsg() : localAddr(0), groupAddr(0), msgIdCounter(0), unhandledHandler(nullptr) {
+        // Initialize all source states
+        for(size_t i = 0; i < sourceStates.size(); i++) {
+            resetState(i);
+        }
+    }
+    
+    ~EventMsg() {
+        // Clean up unhandled handler
+        if (unhandledHandler != nullptr) {
+            delete unhandledHandler;
+            unhandledHandler = nullptr;
+        }
+    }
+    
+    // Check if PSRAM is enabled
+    static bool isPSRAMEnabled() {
+#if EVENT_MSG_PSRAM_ENABLED
+        return true;
+#else
+        return false;
+#endif
+    }
 
     bool init(WriteCallback cb);
     void setAddr(uint8_t addr);

@@ -8,10 +8,11 @@
 class EventDispatcher {
 public:
     // Callback type for individual events with device name
-    using EventCallback = std::function<void( const char* data, EventHeader& header)>;
+    using EventCallback = std::function<void(const char* data, EventHeader& header)>;
     
-    // Constructor sets local address and device name
-    EventDispatcher(uint8_t localAddr = 0x00) : localAddress(localAddr)  {}
+    // Constructor sets local address, receiver ID, and group ID
+    EventDispatcher(uint8_t localAddr = 0x00, uint8_t receiverId = 0xFF, uint8_t groupId = 0x00) 
+        : localAddress(localAddr), listenReceiverId(receiverId), listenGroupId(groupId) {}
     
     // Register event handler
     void on(const char* eventName, EventCallback callback) {
@@ -22,7 +23,7 @@ public:
     void dispatchEvent(const char* eventName, const char* data, EventHeader& header) {
         auto it = handlers.find(eventName);
         if (it != handlers.end()) {
-            it->second( data, header);
+            it->second(data, header);
         }
     }
     
@@ -53,15 +54,38 @@ public:
         };
     }
     
+    // Get header for registration with EventMsg
+    EventHeader getListenHeader() const {
+        return EventHeader{
+            BROADCAST_SENDER,  // Accept any sender
+            listenReceiverId,
+            listenGroupId,
+            0x00
+        };
+    }
+    
+    // Simplified registration with EventMsg
+    bool registerWith(EventMsg& eventMsg, const char* name) {
+        return eventMsg.registerDispatcher(name, getListenHeader(), getHandler());
+    }
+    
     // Get/set local address
     uint8_t getLocalAddress() const { return localAddress; }
     void setLocalAddress(uint8_t addr) { localAddress = addr; }
     
-
+    // Get/set receiver ID
+    uint8_t getReceiverId() const { return listenReceiverId; }
+    void setReceiverId(uint8_t id) { listenReceiverId = id; }
+    
+    // Get/set group ID
+    uint8_t getGroupId() const { return listenGroupId; }
+    void setGroupId(uint8_t id) { listenGroupId = id; }
 
 private:
     std::map<std::string, EventCallback> handlers;
     uint8_t localAddress;
+    uint8_t listenReceiverId;
+    uint8_t listenGroupId;
 };
 
 #endif // EVENT_DISPATCHER_H

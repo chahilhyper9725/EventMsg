@@ -1,11 +1,22 @@
 #include "EventMsg.h"
 #include <string.h>
 
+// Initialize static members
+portMUX_TYPE ThreadSafeQueue::mux = portMUX_INITIALIZER_UNLOCKED;
+
+// Define the global source queue manager
+SourceQueueManager sourceManager;
+
 bool EventMsg::init(WriteCallback cb) {
     setWriteCallback(cb);
+    
+    // Ensure at least one source exists
+    ensureDefaultSource();
+    
     for(int i = 0; i < sourceStates.size(); i++) {
         resetState(i);
     }
+    
     unhandledHandler = nullptr;
     return true;
 }
@@ -86,7 +97,19 @@ void EventMsg::setUnhandledHandler(const char* deviceName, const EventHeader& he
 }
 
 void EventMsg::processAllSources() {
+    // Check if any sources exist before processing
+    if (sourceManager.getSourceCount() == 0) {
+        DEBUG_PRINT("processAllSources: No sources to process");
+        return;
+    }
+    
     sourceManager.processAll([this](uint8_t sourceId, uint8_t* data, size_t length) {
+        // Validate sourceId is within bounds
+        if (sourceId >= sourceStates.size()) {
+            DEBUG_PRINT("Invalid source ID: %d", sourceId);
+            return;
+        }
+        
         this->process(sourceId, data, length);
     });
 }
@@ -164,8 +187,8 @@ size_t EventMsg::send(const char* name, const char* data, uint8_t receiverId, ui
 }
 
 size_t EventMsg::send(const char* name, const char* data, const EventHeader& header) {
-    std::vector<uint8_t> tempBuf;
-    std::vector<uint8_t> msgBuf;
+    PSRAMVector<uint8_t> tempBuf;
+    PSRAMVector<uint8_t> msgBuf;
     tempBuf.reserve(MAX_EVENT_NAME_SIZE * 2);
     msgBuf.reserve(MAX_EVENT_DATA_SIZE * 2);
     
@@ -188,7 +211,7 @@ size_t EventMsg::send(const char* name, const char* data, const EventHeader& hea
     msgBuf.insert(msgBuf.end(), tempBuf.begin(), tempBuf.begin() + stuffedLen);
     msgBuf.push_back(STX);
 
-    std::vector<uint8_t> eventNameBytes(MAX_EVENT_NAME_SIZE);
+    PSRAMVector<uint8_t> eventNameBytes(MAX_EVENT_NAME_SIZE);
     size_t eventNameLen = StringToBytes(name, eventNameBytes.data(), eventNameBytes.size());
     if(eventNameLen == 0) return 0;
 
@@ -198,7 +221,7 @@ size_t EventMsg::send(const char* name, const char* data, const EventHeader& hea
     msgBuf.insert(msgBuf.end(), tempBuf.begin(), tempBuf.begin() + stuffedLen);
     msgBuf.push_back(US);
 
-    std::vector<uint8_t> eventDataBytes(MAX_EVENT_DATA_SIZE);
+    PSRAMVector<uint8_t> eventDataBytes(MAX_EVENT_DATA_SIZE);
     size_t eventDataLen = StringToBytes(data, eventDataBytes.data(), eventDataBytes.size());
     if(eventDataLen == 0) return 0;
 
@@ -229,19 +252,25 @@ void EventMsg::resetState(uint8_t sourceId) {
 }
 
 bool EventMsg::isHandlerMatch(const EventHeader& header, uint8_t receiverId, uint8_t senderId, uint8_t groupId) {
-    if (receiverId != BROADCAST_ADDR && 
-        header.receiverId != BROADCAST_ADDR && 
-        receiverId != header.receiverId) {
-        return false;
-    }
+    // Check receiver match (direct or broadcast)
+    bool receiverMatch = (receiverId == BROADCAST_ADDR || 
+                         header.receiverId == BROADCAST_ADDR || 
+                         receiverId == header.receiverId);
     
-    if (groupId != BROADCAST_ADDR &&
-        header.groupId != BROADCAST_ADDR &&
-        groupId != header.groupId) {
-        return false;
-    }
+    // Check sender match (any sender or specific)
+    bool senderMatch = (senderId == BROADCAST_SENDER || 
+                       senderId == header.senderId);
     
-    return true;
+    // Check group match (no group, broadcast group, or specific group)
+    bool groupMatch = (groupId == 0 || 
+                      header.groupId == 0 || 
+                      groupId == header.groupId || 
+                      header.groupId == BROADCAST_ADDR);
+    
+    DEBUG_PRINT("Match check: receiver=%d, sender=%d, group=%d", 
+               receiverMatch, senderMatch, groupMatch);
+    
+    return receiverMatch && senderMatch && groupMatch;
 }
 
 void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size_t length, EventHeader& header) {
@@ -369,6 +398,12 @@ bool EventMsg::processNextByte(uint8_t sourceId, uint8_t byte) {
 }
 
 bool EventMsg::process(uint8_t sourceId, const uint8_t* data, size_t len) {
+    // Validate sourceId is within bounds
+    if (sourceId >= sourceStates.size()) {
+        DEBUG_PRINT("process: Invalid source ID: %d", sourceId);
+        return false;
+    }
+    
     for (size_t i = 0; i < len; i++) {
         if (!processNextByte(sourceId, data[i])) {
             resetState(sourceId);
