@@ -79,13 +79,12 @@ class CharacteristicCallbacks : public NimBLECharacteristicCallbacks
 };
 
 // Example event handler
-void lua_code(const char *data, EventHeader &header)
+void lua_code(const char *data, size_t length, EventHeader &header)
 {
     Serial.println("Received Lua code from mobile app");
     Serial.println(data);
     auto responseHeader = HeliosDis.createResponseHeader(header);
     eventMsg.send("lua_result", "success", responseHeader);
-    
 }
 
 void setup()
@@ -157,21 +156,21 @@ void setup()
     // Set up mobile app event handlers
     HeliosDis.on("lua_code", lua_code);
 
-    HeliosDis.on("config", [](const char *data, EventHeader &header)
+    HeliosDis.on("config", [](const char *data, size_t length, EventHeader &header)
                  {
         Serial.println("Received configuration from mobile app");
         auto responseHeader = HeliosDis.createResponseHeader(header);
         eventMsg.send("config_applied", "success", responseHeader); });
 
     // Set up ESP-NOW event handlers
-    espNowDispatcher.on("forward", [](const char *data, EventHeader &header)
+    espNowDispatcher.on("forward", [](const char *data, size_t length, EventHeader &header)
                         {
         Serial.println("Forwarding message to other nodes");
         auto broadcastHeader = espNowDispatcher.createHeader(DEVICEBROADCAST);
         eventMsg.send("forward_msg", data, broadcastHeader); });
 
     // Set up BLE control event handlers
-    bleDispatcher.on("mtu_update", [](const char *data, EventHeader &header)
+    bleDispatcher.on("mtu_update", [](const char *data, size_t length, EventHeader &header)
                      {
         int mtu = atoi(data);
         NimBLEDevice::setMTU(mtu);

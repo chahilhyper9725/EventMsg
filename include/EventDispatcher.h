@@ -7,8 +7,8 @@
 
 class EventDispatcher {
 public:
-    // Callback type for individual events with device name
-    using EventCallback = std::function<void(const char* data, EventHeader& header)>;
+    // Callback type for individual events with device name and data length
+    using EventCallback = std::function<void(const char* data, size_t length, EventHeader& header)>;
     
     // Constructor sets local address, receiver ID, and group ID
     EventDispatcher(uint8_t localAddr = 0x00, uint8_t receiverId = 0xFF, uint8_t groupId = 0x00) 
@@ -20,17 +20,17 @@ public:
     }
     
     // Handle incoming event
-    void dispatchEvent(const char* eventName, const char* data, EventHeader& header) {
+    void dispatchEvent(const char* eventName, const char* data, size_t length, EventHeader& header) {
         auto it = handlers.find(eventName);
         if (it != handlers.end()) {
-            it->second(data, header);
+            it->second(data, length, header);
         }
     }
     
     // Get dispatcher callback for EventMsg registration
     EventDispatcherCallback getHandler() {
-        return [this](const char* deviceName, const char* eventName, const char* data, EventHeader& header) {
-            this->dispatchEvent(eventName, data, header);
+        return [this](const char* deviceName, const char* eventName, const char* data, size_t length, EventHeader& header) {
+            this->dispatchEvent(eventName, data, length, header);
         };
     }
     

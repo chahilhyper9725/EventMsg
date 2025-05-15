@@ -7,10 +7,22 @@
 HardwareSerial sensorSerial(1);
 #define RX_PIN 16
 #define TX_PIN 17
-EventMsg eventMsg;
 
-EventDispatcher sensorDispatcher(0xFF, 0x01, 0x01); // Mobile app messages
+EventMsg eventMsg;
+EventDispatcher sensorDispatcher(0xFF, 0xFF, 0xFF); // Mobile app messages
 int sensorSerialId;
+
+bool serialWrite(uint8_t *data, size_t len)
+{
+    sensorSerial.write(data, len);
+    sensorSerial.flush();
+    return true;
+}
+
+void ledon(const char *data, size_t length, EventHeader &header)
+{
+    Serial.printf("LED ON command received: %s (length: %d)\n", data, length);
+}
 
 void setup()
 {
@@ -18,7 +30,7 @@ void setup()
     eventMsg.createSource(1, 16);
     eventMsg.createSource(1, 16);
     sensorSerialId = eventMsg.createSource(1024, 16);
-    sensorSerial.begin(115200, SERIAL_8N1,RX_PIN , TX_PIN);
+    sensorSerial.begin(115200, SERIAL_8N1, RX_PIN, TX_PIN);
 
     // Check if PSRAM is enabled
     if (EventMsg::isPSRAMEnabled())
@@ -30,22 +42,17 @@ void setup()
         Serial.println("PSRAM support is not enabled");
     }
 
-    eventMsg.setWriteCallback([](uint8_t *data, size_t len)
-                              {
-       sensorSerial.write(data, len);
-       sensorSerial.flush();
-    // eventMsg.process(sensorSerialId, data,len);
-
-        return true; });
-
+    eventMsg.setWriteCallback(serialWrite);
 
     sensorDispatcher.registerWith(eventMsg, "sensordata");
 
-    sensorDispatcher.on("sensordata", [](const char *data, EventHeader &header)
-                        { Serial.printf("Received sensor data: %s\n", data); });
+    sensorDispatcher.on("sensordata", [](const char *data, size_t length, EventHeader &header)
+                        { Serial.printf("Received sensor data: %s (length: %d)\n", data, length); });
 
-    eventMsg.setUnhandledHandler("unhandled", sensorDispatcher.getListenHeader(), [](const char *deviceName, const char *eventName, const char *data, EventHeader &header)
-                                 { Serial.printf("Unhandled event: %s, data: %s\n", eventName, data); });
+sensorDispatcher.on("ledon",ledon);
+
+    eventMsg.setUnhandledHandler("unhandled", sensorDispatcher.getListenHeader(), [](const char *deviceName, const char *eventName, const char *data, size_t length, EventHeader &header)
+                                 { Serial.printf("Unhandled event: %s, data: %s (length: %d)\n", eventName, data, length); });
 }
 
 long lastMillis = 0;
@@ -54,17 +61,15 @@ void loop()
 {
     eventMsg.processAllSources();
 
-    if (sensorSerial.available()>0)
+    if (sensorSerial.available() > 0)
     {
-     uint8_t buffer[256];
+        uint8_t buffer[256];
         size_t len = sensorSerial.readBytes(buffer, sizeof(buffer));
-         Serial.printf("Received %d bytes from sensor serial\n", len);
-         bool queued = sourceManager.pushToSource(
-                sensorSerialId,
-                ( uint8_t *)buffer,
-                len);
-               
-               
+        Serial.printf("Received %d bytes from sensor serial\n", len);
+        bool queued = sourceManager.pushToSource(
+            sensorSerialId,
+            (uint8_t *)buffer,
+            len);
     }
 
     if (Serial.available())

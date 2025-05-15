@@ -315,8 +315,8 @@ struct EventHeader {
 // Function type for data transmission
 using WriteCallback = std::function<bool(uint8_t*, size_t)>;
 
-// Function type for event handling with header
-using EventDispatcherCallback = std::function<void(const char* deviceName, const char* eventName, const char* data, EventHeader& header)>;
+// Function type for event handling with header and data length
+using EventDispatcherCallback = std::function<void(const char* deviceName, const char* eventName, const char* data, size_t length, EventHeader& header)>;
 // Function type for raw data handling (simplified)
 using RawDataCallback = std::function<void(const char* deviceName, const uint8_t* data, size_t length)>;
 
@@ -403,7 +403,7 @@ private:
 
     // Internal methods
     bool processNextByte(uint8_t sourceId, uint8_t byte);
-    void processCallbacks(const char* eventName, const uint8_t* data, size_t length, EventHeader& header);
+    void processCallbacks(const char* eventName, const uint8_t* data, size_t dataLength, EventHeader& header);
     void resetState(uint8_t sourceId);
     size_t ByteStuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen);
     size_t ByteUnstuff(const uint8_t* input, size_t inputLen, uint8_t* output, size_t outputMaxLen);

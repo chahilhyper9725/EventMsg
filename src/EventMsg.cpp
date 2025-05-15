@@ -287,6 +287,7 @@ void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size
             dispatcher.callback(dispatcher.deviceName.c_str(), 
                              eventName,
                              (const char*)data,
+                             length,
                              header);
             eventHandled = true;
         }
@@ -297,6 +298,7 @@ void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size
         unhandledHandler->callback(unhandledHandler->deviceName.c_str(),
                                  eventName,
                                  (const char*)data,
+                                 length,
                                  header);
     }
 }
