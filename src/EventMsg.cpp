@@ -13,10 +13,7 @@ bool EventMsg::init(WriteCallback cb) {
     // Ensure at least one source exists
     ensureDefaultSource();
     
-    for(int i = 0; i < sourceStates.size(); i++) {
-        resetState(i);
-    }
-    
+    // No need to initialize fixed array - dynamic map handles this
     unhandledHandler = nullptr;
     return true;
 }
@@ -104,12 +101,7 @@ void EventMsg::processAllSources() {
     }
     
     sourceManager.processAll([this](uint8_t sourceId, uint8_t* data, size_t length) {
-        // Validate sourceId is within bounds
-        if (sourceId >= sourceStates.size()) {
-            DEBUG_PRINT("Invalid source ID: %d", sourceId);
-            return;
-        }
-        
+        // No bounds checking needed - dynamic map handles any source ID
         this->process(sourceId, data, length);
     });
 }
@@ -241,6 +233,7 @@ size_t EventMsg::send(const char* name, const char* data, const EventHeader& hea
 }
 
 void EventMsg::resetState(uint8_t sourceId) {
+    // Create state if it doesn't exist, or reset existing state
     auto& state = sourceStates[sourceId];
     state.state = ProcessState::WAITING_FOR_SOH;
     state.currentBuffer = nullptr;
@@ -304,6 +297,7 @@ void EventMsg::processCallbacks(const char* eventName, const uint8_t* data, size
 }
 
 bool EventMsg::processNextByte(uint8_t sourceId, uint8_t byte) {
+    // Get or create state for this source ID
     auto& state = sourceStates[sourceId];
     
     if (state.escapedMode) {
@@ -400,12 +394,7 @@ bool EventMsg::processNextByte(uint8_t sourceId, uint8_t byte) {
 }
 
 bool EventMsg::process(uint8_t sourceId, const uint8_t* data, size_t len) {
-    // Validate sourceId is within bounds
-    if (sourceId >= sourceStates.size()) {
-        DEBUG_PRINT("process: Invalid source ID: %d", sourceId);
-        return false;
-    }
-    
+    // No bounds checking needed - dynamic map handles any source ID
     for (size_t i = 0; i < len; i++) {
         if (!processNextByte(sourceId, data[i])) {
             resetState(sourceId);

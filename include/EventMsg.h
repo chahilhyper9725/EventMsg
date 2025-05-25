@@ -98,6 +98,44 @@ public:
         initialize();
     }
 
+    // Copy constructor - create new mutex for the copy
+    ThreadSafeQueue(const ThreadSafeQueue& other) : mutex(nullptr) {
+        initialize();
+        // Copy the data state but not the mutex
+        head = other.head;
+        tail = other.tail;
+        full = other.full;
+        buffer = other.buffer;
+        processedPackets = other.processedPackets;
+        droppedPackets = other.droppedPackets;
+        lastProcessed = other.lastProcessed;
+    }
+
+    // Assignment operator - create new mutex for the copy
+    ThreadSafeQueue& operator=(const ThreadSafeQueue& other) {
+        if (this != &other) {
+            // Clean up existing mutex
+            if (mutex != nullptr) {
+                vSemaphoreDelete(mutex);
+                mutex = nullptr;
+                initialized = false;
+            }
+            
+            // Initialize new mutex
+            initialize();
+            
+            // Copy the data state but not the mutex
+            head = other.head;
+            tail = other.tail;
+            full = other.full;
+            buffer = other.buffer;
+            processedPackets = other.processedPackets;
+            droppedPackets = other.droppedPackets;
+            lastProcessed = other.lastProcessed;
+        }
+        return *this;
+    }
+
     ~ThreadSafeQueue() {
         if (mutex != nullptr) {
             vSemaphoreDelete(mutex);
@@ -131,7 +169,7 @@ public:
         if (len > RawPacket::MAX_SIZE) return false;
         
         // Ensure mutex is initialized
-        if (mutex == nullptr) {
+        if (!initialized || mutex == nullptr) {
             DEBUG_PRINT("ThreadSafeQueue::push - mutex not initialized");
             return false;
         }
@@ -161,7 +199,7 @@ public:
 public:
     bool tryPop(RawPacket& packet) const {
         // Ensure mutex is initialized
-        if (mutex == nullptr) {
+        if (!initialized || mutex == nullptr) {
             DEBUG_PRINT("ThreadSafeQueue::tryPop - mutex not initialized");
             return false;
         }
@@ -193,6 +231,7 @@ public:
 private:
     // Queue status methods - all const
     size_t size() const {
+        if (!initialized || mutex == nullptr) return 0;
         xSemaphoreTake(mutex, portMAX_DELAY);
         size_t count = full ? QUEUE_SIZE : (tail + QUEUE_SIZE - head) % QUEUE_SIZE;
         xSemaphoreGive(mutex);
@@ -211,6 +250,7 @@ protected:
     mutable uint32_t lastProcessed = 0;
 
     bool isEmpty() const {
+        if (!initialized || mutex == nullptr) return true;
         xSemaphoreTake(mutex, portMAX_DELAY);
         bool empty = (head == tail && !full);
         xSemaphoreGive(mutex);
@@ -231,8 +271,24 @@ public:
         SourceConfig config;
         Source() = default;
         Source(const SourceConfig& c) : config(c) {
-            // Ensure queue is initialized
+            // Ensure queue is initialized after construction
             queue.initialize();
+        }
+        
+        // Copy constructor - ensure queue is properly initialized
+        Source(const Source& other) : config(other.config) {
+            queue = other.queue;  // This will use ThreadSafeQueue's copy constructor
+            queue.initialize();   // Ensure it's properly initialized
+        }
+        
+        // Assignment operator
+        Source& operator=(const Source& other) {
+            if (this != &other) {
+                config = other.config;
+                queue = other.queue;  // This will use ThreadSafeQueue's assignment operator
+                queue.initialize();   // Ensure it's properly initialized
+            }
+            return *this;
         }
     };
 
@@ -341,10 +397,8 @@ class EventMsg {
 public:
     uint8_t createSource(size_t bufferSize = 512, size_t queueSize = 8) {
         uint8_t sourceId = sourceManager.createSource(bufferSize, queueSize);
-        // Ensure source ID is valid for state tracking
-        if (sourceId < sourceStates.size()) {
-            resetState(sourceId);
-        }
+        // Initialize state for this source
+        resetState(sourceId);
         return sourceId;
     }
     
@@ -398,8 +452,8 @@ private:
     PSRAMVector<RawDataHandler> rawHandlers;
     EventDispatcherInfo* unhandledHandler;
 
-    // State machine per source
-    std::array<ProcessingState, 4> sourceStates;
+    // Dynamic state machine per source
+    std::map<uint8_t, ProcessingState> sourceStates;
 
     // Internal methods
     bool processNextByte(uint8_t sourceId, uint8_t byte);
@@ -411,10 +465,7 @@ private:
 
 public:
     EventMsg() : localAddr(0), groupAddr(0), msgIdCounter(0), unhandledHandler(nullptr) {
-        // Initialize all source states
-        for(size_t i = 0; i < sourceStates.size(); i++) {
-            resetState(i);
-        }
+        // No need to initialize fixed array - dynamic map will handle this
     }
     
     ~EventMsg() {
