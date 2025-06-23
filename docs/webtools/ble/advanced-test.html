@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EventMsg BLE Advanced Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-panel {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric {
+            text-align: center;
+            padding: 15px;
+            background: #f8f8f8;
+            border-radius: 6px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .primary { background: #007bff; color: white; }
+        .success { background: #28a745; color: white; }
+        .warning { background: #ffc107; color: black; }
+        .danger { background: #dc3545; color: white; }
+        .secondary { background: #6c757d; color: white; }
+        button:disabled { background: #ccc !important; }
+        #log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .status-good { color: #28a745; }
+        .status-warning { color: #ffc107; }
+        .status-error { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 EventMsg BLE Advanced Throttling Mitigation</h1>
+        
+        <div class="control-panel">
+            <button id="connectBtn" class="primary">Connect BLE</button>
+            <button id="startBasic" class="success" disabled>Basic Test</button>
+            <button id="startAdvanced" class="warning" disabled>Anti-Throttle Test</button>
+            <button id="stopTest" class="danger" disabled>Stop Test</button>
+        </div>
+
+        <div class="control-panel">
+            <div class="metric">
+                <div class="metric-value" id="throughput">0</div>
+                <div class="metric-label">KB/s</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="messages">0</div>
+                <div class="metric-label">Messages</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="errors">0</div>
+                <div class="metric-label">Errors</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="status">Disconnected</div>
+                <div class="metric-label">Status</div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="metric">
+                <div class="metric-value" id="chunkSize">500</div>
+                <div class="metric-label">Chunk Size (B)</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="batchSize">1</div>
+                <div class="metric-label">Batch Size</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="delay">0</div>
+                <div class="metric-label">Delay (ms)</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="connections">0</div>
+                <div class="metric-label">Reconnects</div>
+            </div>
+        </div>
+
+        <div id="log"></div>
+    </div>
+
+    <script src="event-msg.js"></script>
+    <script>
+        class AdvancedBleHandler {
+            constructor() {
+                this.device = null;
+                this.server = null;
+                this.txCharacteristic = null;
+                this.rxCharacteristic = null;
+                this.eventMsg = new EventMsg();
+                this.connected = false;
+                
+                // Advanced anti-throttling parameters
+                this.chunkSize = 500;
+                this.batchSize = 1;
+                this.delay = 0;
+                this.errorCount = 0;
+                this.reconnectCount = 0;
+                this.throttleStartTime = 0;
+                this.useReconnectStrategy = false;
+                
+                this.SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+                this.CHARACTERISTIC_UUID_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+                this.CHARACTERISTIC_UUID_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+                
+                this.log = this.log.bind(this);
+            }
+
+            log(message, type = 'info') {
+                const logDiv = document.getElementById('log');
+                const timestamp = new Date().toLocaleTimeString();
+                const className = type === 'error' ? 'status-error' : 
+                                type === 'warning' ? 'status-warning' : 
+                                type === 'success' ? 'status-good' : '';
+                
+                logDiv.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span><br>`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+                console.log(message);
+            }
+
+            async connect() {
+                try {
+                    this.log('🔵 Requesting BLE device...');
+                    this.device = await navigator.bluetooth.requestDevice({
+                        filters: [{ services: [this.SERVICE_UUID] }]
+                    });
+
+                    this.log('🔗 Connecting to GATT server...');
+                    this.server = await this.device.gatt.connect();
+                    const service = await this.server.getPrimaryService(this.SERVICE_UUID);
+
+                    this.rxCharacteristic = await service.getCharacteristic(this.CHARACTERISTIC_UUID_RX);
+                    this.txCharacteristic = await service.getCharacteristic(this.CHARACTERISTIC_UUID_TX);
+
+                    this.eventMsg.init(async (data) => {
+                        return await this.writeToBLE(data);
+                    });
+
+                    await this.txCharacteristic.startNotifications();
+                    this.txCharacteristic.addEventListener('characteristicvaluechanged', 
+                        (event) => this.handleIncomingData(event));
+
+                    this.connected = true;
+                    this.log('✅ BLE Connected successfully', 'success');
+                    return true;
+
+                } catch (error) {
+                    this.log(`❌ Connection failed: ${error.message}`, 'error');
+                    return false;
+                }
+            }
+
+            async disconnect() {
+                if (this.device && this.device.gatt.connected) {
+                    await this.device.gatt.disconnect();
+                }
+                this.connected = false;
+                this.log('🔌 Disconnected');
+            }
+
+            // Advanced reconnection strategy to reset browser BLE stack
+            async reconnect() {
+                this.log('🔄 Attempting reconnect to reset BLE stack...', 'warning');
+                await this.disconnect();
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const success = await this.connect();
+                if (success) {
+                    this.reconnectCount++;
+                    this.updateMetrics();
+                }
+                return success;
+            }
+
+            async writeToBLE(data) {
+                if (!this.rxCharacteristic) return false;
+
+                try {
+                    let offset = 0;
+                    while (offset < data.length) {
+                        const chunk = data.slice(offset, offset + this.chunkSize);
+                        offset += this.chunkSize;
+                        
+                        const writeStart = performance.now();
+                        await this.rxCharacteristic.writeValueWithoutResponse(chunk);
+                        const writeTime = performance.now() - writeStart;
+                        
+                                                 // Less aggressive chunk sizing - maintain performance
+                         if (writeTime > 300) {
+                             this.chunkSize = Math.max(400, this.chunkSize - 25);
+                             this.delay = Math.min(10, this.delay + 1);
+                         } else if (writeTime < 10) {
+                             this.chunkSize = Math.min(500, this.chunkSize + 25);
+                             this.delay = Math.max(0, this.delay - 1);
+                         }
+                        
+                        if (this.delay > 0) {
+                            await new Promise(resolve => setTimeout(resolve, this.delay));
+                        }
+                    }
+                    return true;
+                } catch (error) {
+                    this.errorCount++;
+                    this.log(`❌ Write error: ${error.message}`, 'error');
+                    
+                    // Implement aggressive reconnection strategy
+                    if (this.useReconnectStrategy && this.errorCount % 5 === 0) {
+                        await this.reconnect();
+                    }
+                    
+                    return false;
+                }
+            }
+
+            handleIncomingData(event) {
+                const value = new Uint8Array(event.target.value.buffer);
+                this.eventMsg.process(value);
+            }
+
+            async sendMessage(name, data, receiver = 0xFF, group = 0x00, flags = 0x80) {
+                if (!this.connected) return false;
+                return this.eventMsg.send(name, data, receiver, group, flags);
+            }
+
+            updateMetrics() {
+                document.getElementById('chunkSize').textContent = this.chunkSize;
+                document.getElementById('batchSize').textContent = this.batchSize;
+                document.getElementById('delay').textContent = this.delay;
+                document.getElementById('errors').textContent = this.errorCount;
+                document.getElementById('connections').textContent = this.reconnectCount;
+                document.getElementById('status').textContent = this.connected ? 
+                    (this.delay > 0 ? 'Throttled' : 'Optimal') : 'Disconnected';
+            }
+        }
+
+        // Test controller
+        class TestController {
+            constructor() {
+                this.bleHandler = new AdvancedBleHandler();
+                this.testRunning = false;
+                this.testType = null;
+                this.startTime = 0;
+                this.messageCount = 0;
+                this.totalBytes = 0;
+                this.reconnectInterval = null;
+            }
+
+            async connect() {
+                const success = await this.bleHandler.connect();
+                if (success) {
+                    document.getElementById('startBasic').disabled = false;
+                    document.getElementById('startAdvanced').disabled = false;
+                    document.getElementById('connectBtn').disabled = true;
+                }
+                return success;
+            }
+
+            async startBasicTest() {
+                this.testType = 'basic';
+                this.startTest();
+            }
+
+            async startAdvancedTest() {
+                this.testType = 'advanced';
+                this.bleHandler.useReconnectStrategy = true;
+                
+                // Implement periodic reconnection every 25 seconds to prevent throttling
+                this.reconnectInterval = setInterval(async () => {
+                    if (this.testRunning) {
+                        this.bleHandler.log('🔄 Preventive reconnection to avoid throttling...', 'warning');
+                        await this.bleHandler.reconnect();
+                    }
+                }, 25000);
+                
+                this.startTest();
+            }
+
+            async startTest() {
+                this.testRunning = true;
+                this.startTime = Date.now();
+                this.messageCount = 0;
+                this.totalBytes = 0;
+                
+                document.getElementById('startBasic').disabled = true;
+                document.getElementById('startAdvanced').disabled = true;
+                document.getElementById('stopTest').disabled = false;
+                
+                this.bleHandler.log(`🚀 Starting ${this.testType} throughput test...`, 'success');
+                this.runTestLoop();
+            }
+
+            async runTestLoop() {
+                while (this.testRunning) {
+                    try {
+                        const batchPromises = [];
+                        const testData = "X".repeat(1000);
+                        
+                        // Send batch of messages
+                        for (let i = 0; i < this.bleHandler.batchSize; i++) {
+                            batchPromises.push(
+                                this.bleHandler.sendMessage("THROUGHPUT_TEST", testData)
+                            );
+                        }
+                        
+                        await Promise.all(batchPromises);
+                        
+                        this.messageCount += this.bleHandler.batchSize;
+                        this.totalBytes += testData.length * this.bleHandler.batchSize;
+                        
+                        // Update UI
+                        this.updateStats();
+                        
+                        // Adaptive batching
+                        if (this.bleHandler.delay === 0 && this.bleHandler.errorCount === 0) {
+                            this.bleHandler.batchSize = Math.min(5, this.bleHandler.batchSize + 1);
+                        } else {
+                            this.bleHandler.batchSize = Math.max(1, this.bleHandler.batchSize - 1);
+                        }
+                        
+                        this.bleHandler.updateMetrics();
+                        
+                        // Small delay between batches
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                        
+                    } catch (error) {
+                        this.bleHandler.log(`❌ Test loop error: ${error.message}`, 'error');
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
+            }
+
+            stopTest() {
+                this.testRunning = false;
+                this.bleHandler.useReconnectStrategy = false;
+                
+                if (this.reconnectInterval) {
+                    clearInterval(this.reconnectInterval);
+                    this.reconnectInterval = null;
+                }
+                
+                document.getElementById('startBasic').disabled = false;
+                document.getElementById('startAdvanced').disabled = false;
+                document.getElementById('stopTest').disabled = true;
+                
+                const duration = (Date.now() - this.startTime) / 1000;
+                const avgThroughput = this.totalBytes / (1024 * duration);
+                
+                this.bleHandler.log(`📊 Test completed: ${this.messageCount} messages, ${this.totalBytes} bytes in ${duration.toFixed(1)}s (avg: ${avgThroughput.toFixed(2)} KB/s)`, 'success');
+            }
+
+            updateStats() {
+                const duration = (Date.now() - this.startTime) / 1000;
+                const throughput = this.totalBytes / (1024 * duration);
+                
+                document.getElementById('throughput').textContent = throughput.toFixed(2);
+                document.getElementById('messages').textContent = this.messageCount;
+            }
+        }
+
+        // Initialize
+        const testController = new TestController();
+
+        document.getElementById('connectBtn').addEventListener('click', () => testController.connect());
+        document.getElementById('startBasic').addEventListener('click', () => testController.startBasicTest());
+        document.getElementById('startAdvanced').addEventListener('click', () => testController.startAdvancedTest());
+        document.getElementById('stopTest').addEventListener('click', () => testController.stopTest());
+    </script>
+</body>
+</html> 

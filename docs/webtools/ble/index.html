@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EventMsg BLE Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            display: flex;
+            min-height: 100vh;
+            background: #f5f5f5;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-right: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: calc(100% - 300px);
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
+        }
+
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0052a3;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.8em;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+
+        .message-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .message-item {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .message-header {
+            padding: 10px;
+            background: #f8f8f8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .message-content {
+            padding: 15px;
+            display: none;
+            background: #fff;
+            border-top: 1px solid #eee;
+        }
+
+        .message-content.expanded {
+            display: block;
+        }
+
+        .badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: white;
+            margin-left: 4px;
+        }
+
+        .badge-size-small { background: #4caf50; }
+        .badge-size-medium { background: #2196f3; }
+        .badge-size-large { background: #9c27b0; }
+        
+        .badge-receiver { background: #ff9800; }
+        .badge-group { background: #9c27b0; }
+        .badge-flags { background: #607d8b; }
+        .badge-id { background: #795548; }
+
+        .metadata {
+            margin-top: 8px;
+            font-family: monospace;
+            color: #666;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #0066cc;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        #log {
+            font-family: monospace;
+            font-size: 12px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            border-radius: 4px;
+        }
+
+        #log .debug {
+            color: #666;
+        }
+
+        #log .error {
+            color: #ff5252;
+        }
+
+        .message-timestamp {
+            color: #666;
+            font-size: 0.8em;
+        }
+
+        .message-event {
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .message-config {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message-section {
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 6px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-with-badge {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .hex-badge {
+            position: absolute;
+            left: 8px;
+            color: #666;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .input-with-badge input {
+            padding-left: 28px;
+        }
+
+        .preset-item {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .preset-btn {
+            text-align: left;
+            background: #f0f0f0;
+            color: #333;
+            padding: 12px;
+            flex: 1;
+            margin: 0;
+        }
+
+        .preset-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .preset-action {
+            padding: 8px;
+            background: #f0f0f0;
+            color: #666;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preset-action:hover {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .preset-delete {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+
+        .preset-delete:hover {
+            background: #ffcdd2;
+        }
+
+        h3 {
+            margin-bottom: 15px;
+            color: #444;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="card">
+            <h2>Connection</h2>
+            <div style="margin-top: 15px">
+                <button id="connectBtn" style="width: 100%; margin-bottom: 10px">Connect to Device</button>
+                <button id="disconnectBtn" style="width: 100%" disabled>Disconnect</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Preset Messages</h2>
+            <div id="presetList" style="margin-top: 15px; display: flex; flex-direction: column;">
+                <!-- Presets will be loaded here -->
+            </div>
+            <div style="margin-top: 15px">
+                <button id="addPreset" style="width: 100%">Add New Preset</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Settings</h2>
+            <div class="form-group" style="margin-top: 15px">
+                <label>Write with Response</label>
+                <label class="switch">
+                    <input type="checkbox" id="writeWithResponse">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Auto-scroll Log</label>
+                <label class="switch">
+                    <input type="checkbox" id="autoScroll" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button id="clearLogs" style="width: 100%">Clear Logs</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Messages Sent</div>
+                <div class="stat-value" id="msgCount">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Bytes Sent</div>
+                <div class="stat-value" id="bytesSent">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Throughput (KB/s)</div>
+                <div class="stat-value" id="throughput">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Batch Size</div>
+                <div class="stat-value" id="batchSize">1</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Chunk Size (B)</div>
+                <div class="stat-value" id="chunkSize">500</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Status</div>
+                <div class="stat-value" id="statusIndicator">Ready</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Send Message</h2>
+            <div class="message-config" style="margin-top: 15px">
+                <div class="message-section">
+                    <div class="form-group">
+                        <label>Event Name</label>
+                        <input type="text" id="eventName" value="TEST">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Data</label>
+                        <textarea id="eventData" rows="3">Hello World</textarea>
+                    </div>
+                </div>
+
+                <div class="message-section">
+                    <h3>Message Configuration</h3>
+                    <div class="config-grid">
+                        <div class="form-group">
+                            <label>Receiver (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="receiver" value="FF">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Group (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="group" value="00">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Flags (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="flags" value="80">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="sendBtn" disabled style="flex: 1">Send Message</button>
+                    <button id="startTest" disabled style="flex: 1">Start Test</button>
+                    <button id="stopTest" disabled style="flex: 1">Stop Test</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Received Messages</h2>
+            <div id="messageList" class="message-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>Debug Log</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script src="event-msg.js"></script>
+    <script src="ble-handler.js"></script>
+    <script>
+        let bleHandler = new BleHandler();
+        let testRunning = false;
+        let startTime = 0;
+        let totalBytes = 0;
+        let messageCount = 0;
+        let testInterval = null;
+        let batchSize = 1;
+        let adaptiveDelay = 0;
+        let throttleDetected = false;
+
+        // Load presets from localStorage
+        let presets = JSON.parse(localStorage.getItem('presets') || '[]');
+        if (!presets.length) {
+            // Default presets
+            presets = [
+                {
+                    name: 'Get Status',
+                    event: 'STATUS',
+                    data: 'GET_STATUS',
+                    receiver: 'FF',
+                    group: '00',
+                    flags: '80'
+                },
+                {
+                    name: 'Start Control',
+                    event: 'CONTROL',
+                    data: 'START',
+                    receiver: 'FF',
+                    group: '01',
+                    flags: '80'
+                },
+                {
+                    name: 'Stop Control',
+                    event: 'CONTROL',
+                    data: 'STOP',
+                    receiver: 'FF',
+                    group: '01',
+                    flags: '80'
+                }
+            ];
+            localStorage.setItem('presets', JSON.stringify(presets));
+        }
+
+        function savePresets() {
+            localStorage.setItem('presets', JSON.stringify(presets));
+        }
+
+        function createPresetElement(preset, index) {
+            const div = document.createElement('div');
+            div.className = 'preset-item';
+
+            const btn = document.createElement('button');
+            btn.className = 'preset-btn';
+            btn.textContent = preset.name;
+            btn.onclick = () => {
+                document.getElementById('eventName').value = preset.event;
+                document.getElementById('eventData').value = preset.data;
+                document.getElementById('receiver').value = preset.receiver;
+                document.getElementById('group').value = preset.group;
+                document.getElementById('flags').value = preset.flags;
+            };
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'preset-action';
+            editBtn.innerHTML = '✏️';
+            editBtn.onclick = () => {
+                const name = prompt('Enter new preset name:', preset.name);
+                if (!name) return;
+                presets[index].name = name;
+                presets[index].event = document.getElementById('eventName').value;
+                presets[index].data = document.getElementById('eventData').value;
+                presets[index].receiver = document.getElementById('receiver').value;
+                presets[index].group = document.getElementById('group').value;
+                presets[index].flags = document.getElementById('flags').value;
+                savePresets();
+                renderPresets();
+            };
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'preset-action preset-delete';
+            deleteBtn.innerHTML = '❌';
+            deleteBtn.onclick = () => {
+                if (confirm('Delete this preset?')) {
+                    presets.splice(index, 1);
+                    savePresets();
+                    renderPresets();
+                }
+            };
+
+            div.appendChild(btn);
+            div.appendChild(editBtn);
+            div.appendChild(deleteBtn);
+            return div;
+        }
+
+        function renderPresets() {
+            const list = document.getElementById('presetList');
+            list.innerHTML = '';
+            presets.forEach((preset, index) => {
+                list.appendChild(createPresetElement(preset, index));
+            });
+        }
+
+        // Initial render
+        renderPresets();
+
+        function formatTimestamp() {
+            return new Date().toLocaleTimeString('en-US', { 
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+        }
+
+        function getSizeBadge(size) {
+            if (size < 100) return '<span class="badge badge-size-small">' + size + 'B</span>';
+            if (size < 500) return '<span class="badge badge-size-medium">' + size + 'B</span>';
+            return '<span class="badge badge-size-large">' + size + 'B</span>';
+        }
+
+        function addMessageToList(name, data, metadata) {
+            // Limit message history during throughput tests to reduce DOM overhead
+            if (testRunning && name === 'TEST') {
+                return; // Skip DOM updates during throughput test
+            }
+            
+            const messageList = document.getElementById('messageList');
+            const size = new TextEncoder().encode(data).length;
+            const id = 'msg-' + Date.now();
+            
+            const html = `
+                <div class="message-item">
+                    <div class="message-header" onclick="toggleMessage('${id}')">
+                        <span class="message-timestamp">${formatTimestamp()}</span>
+                        <span class="message-event">${name}</span>
+                        ${getSizeBadge(size)}
+                        <span class="badge badge-receiver">R:${metadata.receiver.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-group">G:${metadata.group.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-flags">F:${metadata.flags.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-id">ID:${metadata.messageId.toString(16).toUpperCase()}</span>
+                    </div>
+                    <div class="message-content" id="${id}">
+                        <pre>${data}</pre>
+                        <div class="metadata">
+                            <div>Receiver: 0x${metadata.receiver.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Group: 0x${metadata.group.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Flags: 0x${metadata.flags.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Message ID: 0x${metadata.messageId.toString(16).padStart(4,'0').toUpperCase()}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            messageList.insertAdjacentHTML('afterbegin', html);
+        }
+
+        function toggleMessage(id) {
+            const content = document.getElementById(id);
+            content.classList.toggle('expanded');
+        }
+
+        function log(message, isDebug = false) {
+            // Reduce logging during throughput tests
+            if (testRunning && isDebug) return;
+            
+            const logDiv = document.getElementById('log');
+            const timestamp = formatTimestamp();
+            const prefix = isDebug ? 
+                `<span class="debug">[${timestamp}][DEBUG]</span> ` : 
+                `<span>[${timestamp}]</span> `;
+            
+            logDiv.innerHTML += prefix + message + '<br>';
+            
+            if (document.getElementById('autoScroll').checked) {
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+        }
+
+        // Override console.log for debugging
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        console.log = function() {
+            originalConsoleLog.apply(console, arguments);
+            if (!testRunning) { // Only log to UI when not in throughput test
+                const message = Array.from(arguments).join(' ');
+                log(message, true);
+            }
+        };
+        console.error = function() {
+            originalConsoleError.apply(console, arguments);
+            const message = Array.from(arguments).join(' ');
+            log(`<span class="error">${message}</span>`, true);
+        };
+
+        function updateStats() {
+            const elapsedTime = (Date.now() - startTime) / 1000;
+            const throughput = totalBytes / (1024 * elapsedTime);
+
+            document.getElementById('msgCount').textContent = messageCount;
+            document.getElementById('bytesSent').textContent = totalBytes;
+            document.getElementById('throughput').textContent = throughput.toFixed(2);
+            document.getElementById('batchSize').textContent = batchSize;
+            
+            // Update BLE performance stats if available
+            if (bleHandler && bleHandler.isConnected()) {
+                const perfStats = bleHandler.getPerformanceStats();
+                document.getElementById('chunkSize').textContent = perfStats.adaptiveChunkSize;
+                
+                let status = 'Optimal';
+                if (perfStats.throttleDetected) {
+                    status = '⚠️ Throttled';
+                } else if (perfStats.pendingWrites > 1) {
+                    status = '⏳ Busy';
+                } else if (perfStats.queuedWrites > 0) {
+                    status = '📦 Queued';
+                }
+                document.getElementById('statusIndicator').textContent = status;
+            }
+            
+            // Less aggressive throttling detection - don't reduce performance drastically
+            if (elapsedTime > 10) { // Wait longer before detecting throttling
+                const currentThroughput = throughput;
+                if (!throttleDetected && currentThroughput < 2 && elapsedTime > 40) {
+                    throttleDetected = true;
+                    log('🚨 Severe throttling detected! Minimal mitigation...');
+                    adaptiveDelay = 10; // Much smaller delay
+                    // Don't reduce batch size aggressively
+                }
+            }
+        }
+
+        // Optimized throughput test with adaptive flow control
+        async function runThroughputBatch(  ) {
+            if (!testRunning) return;
+
+            const batchStartTime = performance.now();
+            let successCount = 0;
+            
+            try {
+                // Send multiple messages in batch to improve efficiency
+                const promises = [];
+                const testData = "X".repeat(1500); // Keep large packets for maximum throughput
+                
+                for (let i = 0; i < batchSize && testRunning; i++) {
+                    promises.push(bleHandler.sendMessage("TEST", testData, 0xFF, 0x00, 0x80));
+                }
+                
+                await Promise.all(promises);
+                successCount = promises.length;
+                
+                totalBytes += testData.length * successCount;
+                messageCount += successCount;
+                
+                // Less aggressive batch sizing - maintain performance
+                const batchTime = performance.now() - batchStartTime;
+                if (batchTime < 20) {
+                    batchSize = Math.min(5, batchSize + 1); // Increase batch size if fast
+                    adaptiveDelay = Math.max(0, adaptiveDelay - 1);
+                } else if (batchTime > 200) {
+                    // Only reduce on very slow batches
+                    batchSize = Math.max(2, batchSize - 1); 
+                    adaptiveDelay = Math.min(20, adaptiveDelay + 2); // Smaller delay increases
+                }
+                
+                updateStats();
+                
+                // Schedule next batch with adaptive delay
+                if (testRunning) {
+                    setTimeout(runThroughputBatch, adaptiveDelay);
+                }
+                
+            } catch (error) {
+                console.error('Batch transfer error:', error);
+                // Exponential backoff on errors
+                adaptiveDelay = Math.min(1000, adaptiveDelay * 2);
+                batchSize = Math.max(1, Math.floor(batchSize / 2));
+                
+                if (testRunning) {
+                    setTimeout(runThroughputBatch, adaptiveDelay);
+                }
+            }
+        }
+
+        async function startThroughputTest() {
+            document.getElementById('startTest').disabled = true;
+            document.getElementById('stopTest').disabled = false;
+            startTime = Date.now();
+            totalBytes = 0;
+            messageCount = 0;
+            testRunning = true;
+            batchSize = 1;
+            adaptiveDelay = 0;
+            throttleDetected = false;
+            
+            log('🚀 Starting optimized throughput test with adaptive flow control...');
+            runThroughputBatch();
+        }
+
+        function stopThroughputTest() {
+            document.getElementById('startTest').disabled = false;
+            document.getElementById('stopTest').disabled = true;
+            testRunning = false;
+            
+            const elapsedTime = (Date.now() - startTime) / 1000;
+            const avgThroughput = totalBytes / (1024 * elapsedTime);
+            log(`📊 Test completed: ${messageCount} messages, ${totalBytes} bytes in ${elapsedTime.toFixed(1)}s (avg: ${avgThroughput.toFixed(2)} KB/s)`);
+        }
+
+        async function connect() {
+            try {
+                log('Connecting to BLE device...');
+                const success = await bleHandler.connect();
+                if (!success) throw new Error('Connection failed');
+
+                bleHandler.onMessageReceived((name, data, metadata) => {
+                    addMessageToList(name, data, metadata);
+                    log(`Received Message:
+    Event: ${name}
+    Data: ${data}
+    Metadata: ${JSON.stringify(metadata, null, 2)}`);
+                });
+
+                log('Connected!');
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('startTest').disabled = false;
+
+            } catch (error) {
+                log('Error: ' + error);
+            }
+        }
+
+        async function disconnect() {
+            await bleHandler.disconnect();
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('startTest').disabled = true;
+            document.getElementById('stopTest').disabled = true;
+            log('Disconnected');
+        }
+
+        document.getElementById('connectBtn').addEventListener('click', connect);
+        document.getElementById('disconnectBtn').addEventListener('click', disconnect);
+        document.getElementById('sendBtn').addEventListener('click', async () => {
+            const name = document.getElementById('eventName').value;
+            const data = document.getElementById('eventData').value;
+            const receiver = parseInt(document.getElementById('receiver').value, 16);
+            const group = parseInt(document.getElementById('group').value, 16);
+            const flags = parseInt(document.getElementById('flags').value, 16);
+
+            await bleHandler.sendMessage(name, data, receiver, group, flags);
+            totalBytes += data.length;
+            messageCount++;
+            updateStats();
+        });
+
+        document.getElementById('addPreset').addEventListener('click', () => {
+            const name = prompt('Enter preset name:');
+            if (!name) return;
+
+            presets.push({
+                name,
+                event: document.getElementById('eventName').value,
+                data: document.getElementById('eventData').value,
+                receiver: document.getElementById('receiver').value,
+                group: document.getElementById('group').value,
+                flags: document.getElementById('flags').value
+            });
+
+            savePresets();
+            renderPresets();
+        });
+
+        document.getElementById('startTest').addEventListener('click', startThroughputTest);
+        document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
+        document.getElementById('clearLogs').addEventListener('click', () => {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('messageList').innerHTML = '';
+        });
+
+        document.getElementById('writeWithResponse').addEventListener('change', (e) => {
+            bleHandler.setWriteWithResponse(e.target.checked);
+        });
+    </script>
+</body>
+</html>
