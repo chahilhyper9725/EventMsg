@@ -168,9 +168,9 @@ class BleHandler {
         }, 0xFF, 0x00);
     }
 
-    async sendMessage(name, data, receiver, group, flags) {
+    async sendMessage(name, data, receiver, senderGroupId, receiverGroupId, flags) {
         if (!this.connected) return false;
-        return this.eventMsg.send(name, data, receiver, group, flags);
+        return this.eventMsg.send(name, data, receiver, senderGroupId, receiverGroupId, flags);
     }
 
     // Get current BLE performance stats

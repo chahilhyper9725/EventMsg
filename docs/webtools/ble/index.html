@@ -114,8 +114,11 @@
         }
 
         .message-list {
-            max-height: 400px;
+            max-height: 300px;
             overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 10px;
         }
 
         .message-item {
@@ -253,13 +256,14 @@
 
         .message-section {
             background: #f8f8f8;
-            padding: 15px;
+            padding: 12px;
             border-radius: 6px;
+            margin-bottom: 10px;
         }
 
         .config-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: 15px;
         }
 
@@ -427,30 +431,38 @@
                 <div class="message-section">
                     <div class="form-group">
                         <label>Event Name</label>
-                        <input type="text" id="eventName" value="TEST">
+                        <input type="text" id="eventName" value="ping">
                     </div>
 
                     <div class="form-group">
                         <label>Data</label>
-                        <textarea id="eventData" rows="3">Hello World</textarea>
+                        <textarea id="eventData" rows="2">Ping from web</textarea>
                     </div>
                 </div>
 
                 <div class="message-section">
-                    <h3>Message Configuration</h3>
+                    <h3>Header Configuration</h3>
                     <div class="config-grid">
                         <div class="form-group">
-                            <label>Receiver (hex)</label>
+                            <label>Receiver ID (hex)</label>
                             <div class="input-with-badge">
-                                <input type="text" id="receiver" value="FF">
+                                <input type="text" id="receiver" value="01">
                                 <span class="hex-badge">0x</span>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label>Group (hex)</label>
+                            <label>Sender Group ID (hex)</label>
                             <div class="input-with-badge">
-                                <input type="text" id="group" value="00">
+                                <input type="text" id="senderGroupId" value="00">
+                                <span class="hex-badge">0x</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Receiver Group ID (hex)</label>
+                            <div class="input-with-badge">
+                                <input type="text" id="receiverGroupId" value="00">
                                 <span class="hex-badge">0x</span>
                             </div>
                         </div>
@@ -474,7 +486,14 @@
         </div>
 
         <div class="card">
-            <h2>Received Messages</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>Received Messages</h2>
+                <div class="button-row" style="gap: 8px;">
+                    <button id="copyAllRaw" class="secondary" style="padding: 6px 12px; font-size: 12px;">Copy All Raw</button>
+                    <button id="copyAllText" class="secondary" style="padding: 6px 12px; font-size: 12px;">Copy All Text</button>
+                    <button id="clearMessages" class="secondary" style="padding: 6px 12px; font-size: 12px;">Clear</button>
+                </div>
+            </div>
             <div id="messageList" class="message-list"></div>
         </div>
 
@@ -500,14 +519,15 @@
         // Load presets from localStorage
         let presets = JSON.parse(localStorage.getItem('presets') || '[]');
         if (!presets.length) {
-            // Default presets
+            // Default presets with new 7-byte header structure
             presets = [
                 {
                     name: 'Get Status',
                     event: 'STATUS',
                     data: 'GET_STATUS',
                     receiver: 'FF',
-                    group: '00',
+                    senderGroupId: '00',
+                    receiverGroupId: '00',
                     flags: '80'
                 },
                 {
@@ -515,7 +535,8 @@
                     event: 'CONTROL',
                     data: 'START',
                     receiver: 'FF',
-                    group: '01',
+                    senderGroupId: '01',
+                    receiverGroupId: '01',
                     flags: '80'
                 },
                 {
@@ -523,7 +544,8 @@
                     event: 'CONTROL',
                     data: 'STOP',
                     receiver: 'FF',
-                    group: '01',
+                    senderGroupId: '01',
+                    receiverGroupId: '01',
                     flags: '80'
                 }
             ];
@@ -545,7 +567,8 @@
                 document.getElementById('eventName').value = preset.event;
                 document.getElementById('eventData').value = preset.data;
                 document.getElementById('receiver').value = preset.receiver;
-                document.getElementById('group').value = preset.group;
+                document.getElementById('senderGroupId').value = preset.senderGroupId || '00';
+                document.getElementById('receiverGroupId').value = preset.receiverGroupId || '00';
                 document.getElementById('flags').value = preset.flags;
             };
 
@@ -559,7 +582,8 @@
                 presets[index].event = document.getElementById('eventName').value;
                 presets[index].data = document.getElementById('eventData').value;
                 presets[index].receiver = document.getElementById('receiver').value;
-                presets[index].group = document.getElementById('group').value;
+                presets[index].senderGroupId = document.getElementById('senderGroupId').value;
+                presets[index].receiverGroupId = document.getElementById('receiverGroupId').value;
                 presets[index].flags = document.getElementById('flags').value;
                 savePresets();
                 renderPresets();
@@ -625,16 +649,19 @@
                         <span class="message-timestamp">${formatTimestamp()}</span>
                         <span class="message-event">${name}</span>
                         ${getSizeBadge(size)}
-                        <span class="badge badge-receiver">R:${metadata.receiver.toString(16).toUpperCase()}</span>
-                        <span class="badge badge-group">G:${metadata.group.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-receiver">R:${metadata.receiverId.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-group">SG:${metadata.senderGroupId.toString(16).toUpperCase()}</span>
+                        <span class="badge badge-group">RG:${metadata.receiverGroupId.toString(16).toUpperCase()}</span>
                         <span class="badge badge-flags">F:${metadata.flags.toString(16).toUpperCase()}</span>
                         <span class="badge badge-id">ID:${metadata.messageId.toString(16).toUpperCase()}</span>
                     </div>
                     <div class="message-content" id="${id}">
                         <pre>${data}</pre>
                         <div class="metadata">
-                            <div>Receiver: 0x${metadata.receiver.toString(16).padStart(2,'0').toUpperCase()}</div>
-                            <div>Group: 0x${metadata.group.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Sender ID: 0x${metadata.senderId.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Receiver ID: 0x${metadata.receiverId.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Sender Group: 0x${metadata.senderGroupId.toString(16).padStart(2,'0').toUpperCase()}</div>
+                            <div>Receiver Group: 0x${metadata.receiverGroupId.toString(16).padStart(2,'0').toUpperCase()}</div>
                             <div>Flags: 0x${metadata.flags.toString(16).padStart(2,'0').toUpperCase()}</div>
                             <div>Message ID: 0x${metadata.messageId.toString(16).padStart(4,'0').toUpperCase()}</div>
                         </div>
@@ -733,7 +760,7 @@
                 const testData = "X".repeat(1500); // Keep large packets for maximum throughput
                 
                 for (let i = 0; i < batchSize && testRunning; i++) {
-                    promises.push(bleHandler.sendMessage("TEST", testData, 0xFF, 0x00, 0x80));
+                    promises.push(bleHandler.sendMessage("TEST", testData, 0xFF, 0x00, 0x00, 0x80));
                 }
                 
                 await Promise.all(promises);
@@ -838,10 +865,11 @@
             const name = document.getElementById('eventName').value;
             const data = document.getElementById('eventData').value;
             const receiver = parseInt(document.getElementById('receiver').value, 16);
-            const group = parseInt(document.getElementById('group').value, 16);
+            const senderGroupId = parseInt(document.getElementById('senderGroupId').value, 16);
+            const receiverGroupId = parseInt(document.getElementById('receiverGroupId').value, 16);
             const flags = parseInt(document.getElementById('flags').value, 16);
 
-            await bleHandler.sendMessage(name, data, receiver, group, flags);
+            await bleHandler.sendMessage(name, data, receiver, senderGroupId, receiverGroupId, flags);
             totalBytes += data.length;
             messageCount++;
             updateStats();
@@ -856,7 +884,8 @@
                 event: document.getElementById('eventName').value,
                 data: document.getElementById('eventData').value,
                 receiver: document.getElementById('receiver').value,
-                group: document.getElementById('group').value,
+                senderGroupId: document.getElementById('senderGroupId').value,
+                receiverGroupId: document.getElementById('receiverGroupId').value,
                 flags: document.getElementById('flags').value
             });
 
@@ -868,7 +897,52 @@
         document.getElementById('stopTest').addEventListener('click', stopThroughputTest);
         document.getElementById('clearLogs').addEventListener('click', () => {
             document.getElementById('log').innerHTML = '';
+        });
+
+        document.getElementById('clearMessages').addEventListener('click', () => {
             document.getElementById('messageList').innerHTML = '';
+        });
+
+        document.getElementById('copyAllRaw').addEventListener('click', () => {
+            const messages = document.querySelectorAll('#messageList .message-item');
+            let rawData = '';
+            
+            messages.forEach(msg => {
+                const timestamp = msg.querySelector('.message-timestamp').textContent;
+                const eventName = msg.querySelector('.message-event').textContent;
+                const data = msg.querySelector('pre').textContent;
+                const metadata = msg.querySelector('.metadata').textContent;
+                
+                rawData += `[${timestamp}] ${eventName}\n`;
+                rawData += `Data: ${data}\n`;
+                rawData += `Metadata: ${metadata}\n`;
+                rawData += '---\n';
+            });
+            
+            navigator.clipboard.writeText(rawData).then(() => {
+                log('Raw message data copied to clipboard');
+            }).catch(err => {
+                log('Failed to copy: ' + err);
+            });
+        });
+
+        document.getElementById('copyAllText').addEventListener('click', () => {
+            const messages = document.querySelectorAll('#messageList .message-item');
+            let textData = '';
+            
+            messages.forEach(msg => {
+                const timestamp = msg.querySelector('.message-timestamp').textContent;
+                const eventName = msg.querySelector('.message-event').textContent;
+                const data = msg.querySelector('pre').textContent;
+                
+                textData += `[${timestamp}] ${eventName}: ${data}\n`;
+            });
+            
+            navigator.clipboard.writeText(textData).then(() => {
+                log('Message text copied to clipboard');
+            }).catch(err => {
+                log('Failed to copy: ' + err);
+            });
         });
 
         document.getElementById('writeWithResponse').addEventListener('change', (e) => {

@@ -145,22 +145,26 @@
             <h3 class="text-lg font-medium mb-2 text-gray-700">Header</h3>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-600">Sender Address (Hex):</label>
-                <input type="text" id="senderAddr" class="mt-1 p-2 border rounded-md w-full" placeholder="0x01" value="0x01">
+                <label class="block text-sm font-medium text-gray-600">Sender ID (Hex):</label>
+                <input type="text" id="senderId" class="mt-1 p-2 border rounded-md w-full" placeholder="0x01" value="0x01">
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-600">Receiver Address (Hex):</label>
-                <input type="text" id="receiverAddr" class="mt-1 p-2 border rounded-md w-full" placeholder="0xFF" value="0xFF">
+                <label class="block text-sm font-medium text-gray-600">Receiver ID (Hex):</label>
+                <input type="text" id="receiverId" class="mt-1 p-2 border rounded-md w-full" placeholder="0xFF" value="0xFF">
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-600">Group Address (Hex):</label>
-                <input type="text" id="groupAddr" class="mt-1 p-2 border rounded-md w-full" placeholder="0x00" value="0x00">
+                <label class="block text-sm font-medium text-gray-600">Sender Group ID (Hex):</label>
+                <input type="text" id="senderGroupId" class="mt-1 p-2 border rounded-md w-full" placeholder="0x00" value="0x00">
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-600">Flag Byte (Hex):</label>
-                <input type="text" id="flagByte" class="mt-1 p-2 border rounded-md w-full" placeholder="0x80" value="0x80">
+                <label class="block text-sm font-medium text-gray-600">Receiver Group ID (Hex):</label>
+                <input type="text" id="receiverGroupId" class="mt-1 p-2 border rounded-md w-full" placeholder="0x00" value="0x00">
               </div>
-              <div class="col-span-2">
+              <div>
+                <label class="block text-sm font-medium text-gray-600">Flags (Hex):</label>
+                <input type="text" id="flags" class="mt-1 p-2 border rounded-md w-full" placeholder="0x80" value="0x80">
+              </div>
+              <div>
                 <label class="block text-sm font-medium text-gray-600">Message ID:</label>
                 <input type="number" id="msgId" class="mt-1 p-2 border rounded-md w-full" placeholder="1234" value="1234">
               </div>
@@ -278,19 +282,23 @@
             <table class="min-w-full divide-y divide-gray-200">
               <tbody class="bg-white divide-y divide-gray-200">
                 <tr>
-                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Sender Address</td>
-                  <td id="decodedSender" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Sender ID</td>
+                  <td id="decodedSenderId" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
                 </tr>
                 <tr>
-                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Receiver Address</td>
-                  <td id="decodedReceiver" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Receiver ID</td>
+                  <td id="decodedReceiverId" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
                 </tr>
                 <tr>
-                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Group Address</td>
-                  <td id="decodedGroup" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Sender Group ID</td>
+                  <td id="decodedSenderGroupId" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
                 </tr>
                 <tr>
-                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Flag Byte</td>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Receiver Group ID</td>
+                  <td id="decodedReceiverGroupId" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">Flags</td>
                   <td id="decodedFlags" class="px-6 py-2 whitespace-nowrap text-sm text-gray-500">-</td>
                 </tr>
                 <tr>
@@ -418,12 +426,13 @@
             <li><strong>ESC (0x1B)</strong>: Escape Character</li>
           </ul>
           
-          <h3>Header Structure (6 bytes)</h3>
+          <h3>Header Structure (7 bytes)</h3>
           <ul>
-            <li><strong>Sender Address</strong>: 1 byte</li>
-            <li><strong>Receiver Address</strong>: 1 byte</li>
-            <li><strong>Group Address</strong>: 1 byte</li>
-            <li><strong>Flag Byte</strong>: 1 byte</li>
+            <li><strong>Sender ID</strong>: 1 byte</li>
+            <li><strong>Receiver ID</strong>: 1 byte</li>
+            <li><strong>Sender Group ID</strong>: 1 byte</li>
+            <li><strong>Receiver Group ID</strong>: 1 byte</li>
+            <li><strong>Flags</strong>: 1 byte</li>
             <li><strong>Message ID</strong>: 2 bytes (big-endian)</li>
           </ul>
           
@@ -457,7 +466,7 @@
             Use the encoder to create protocol messages:
           </p>
           <ol>
-            <li>Fill in the header fields (sender, receiver, group, etc.)</li>
+            <li>Fill in the header fields (sender ID, receiver ID, sender group ID, receiver group ID, flags, message ID)</li>
             <li>Enter an event name and event data</li>
             <li>Click "Generate Protocol Message" to see the byte representation</li>
             <li>Use "Copy Hex" to copy the message for decoding</li>
@@ -633,18 +642,19 @@
       return result;
     }
     
-    function generateProtocolMessage(senderAddr, receiverAddr, groupAddr, flagByte, msgId, eventName, eventData) {
+    function generateProtocolMessage(senderId, receiverId, senderGroupId, receiverGroupId, flags, msgId, eventName, eventData) {
       let message = [];
       
       // Start with SOH
       message.push(SOH);
       
-      // Create header
+      // Create header (7 bytes)
       const header = [
-        senderAddr,
-        receiverAddr,
-        groupAddr,
-        flagByte,
+        senderId,
+        receiverId,
+        senderGroupId,
+        receiverGroupId,
+        flags,
         (msgId >> 8) & 0xFF,  // High byte
         msgId & 0xFF          // Low byte
       ];
@@ -682,18 +692,19 @@
     function generateMessage() {
       try {
         // Parse inputs
-        const senderAddr = parseInt(document.getElementById('senderAddr').value, 16);
-        const receiverAddr = parseInt(document.getElementById('receiverAddr').value, 16);
-        const groupAddr = parseInt(document.getElementById('groupAddr').value, 16);
-        const flagByte = parseInt(document.getElementById('flagByte').value, 16);
+        const senderId = parseInt(document.getElementById('senderId').value, 16);
+        const receiverId = parseInt(document.getElementById('receiverId').value, 16);
+        const senderGroupId = parseInt(document.getElementById('senderGroupId').value, 16);
+        const receiverGroupId = parseInt(document.getElementById('receiverGroupId').value, 16);
+        const flags = parseInt(document.getElementById('flags').value, 16);
         const msgId = parseInt(document.getElementById('msgId').value);
         const eventName = document.getElementById('eventName').value;
         const eventData = document.getElementById('eventData').value;
         
         // Validate inputs
-        if (isNaN(senderAddr) || isNaN(receiverAddr) || isNaN(groupAddr) || 
-            isNaN(flagByte) || isNaN(msgId)) {
-          showToast("Please enter valid hexadecimal values for addresses and flags");
+        if (isNaN(senderId) || isNaN(receiverId) || isNaN(senderGroupId) || 
+            isNaN(receiverGroupId) || isNaN(flags) || isNaN(msgId)) {
+          showToast("Please enter valid hexadecimal values for all header fields");
           return;
         }
         
@@ -704,7 +715,7 @@
         
         // Generate message
         const message = generateProtocolMessage(
-          senderAddr, receiverAddr, groupAddr, flagByte, msgId, eventName, eventData
+          senderId, receiverId, senderGroupId, receiverGroupId, flags, msgId, eventName, eventData
         );
         
         // Update UI
@@ -889,14 +900,20 @@
                 }
                 break;
               case STATE_READING_HEADER:
-                if (byte === STX) {
-                  newState = STATE_READING_EVENT_NAME;
+                headerBytes.push(byte);
+                if (headerBytes.length >= 7) {
+                  newState = STATE_WAITING_FOR_STX;
                   // Process header
                   processHeader(headerBytes);
                   // Clear buffer
                   eventNameBytes = [];
+                }
+                break;
+              case STATE_WAITING_FOR_STX:
+                if (byte === STX) {
+                  newState = STATE_READING_EVENT_NAME;
                 } else {
-                  headerBytes.push(byte);
+                  showToast("Expected STX after header, got: 0x" + byteToHex(byte));
                 }
                 break;
               case STATE_READING_EVENT_NAME:
@@ -996,25 +1013,27 @@
       // Unstuff header bytes
       const unstuffedHeader = byteUnstuff(headerBytes);
       
-      if (unstuffedHeader.length < 6) {
-        showToast("Invalid header: not enough bytes");
+      if (unstuffedHeader.length < 7) {
+        showToast("Invalid header: not enough bytes (expected 7, got " + unstuffedHeader.length + ")");
         return;
       }
       
-      // Parse header
-      const senderAddr = unstuffedHeader[0];
-      const receiverAddr = unstuffedHeader[1];
-      const groupAddr = unstuffedHeader[2];
-      const flagByte = unstuffedHeader[3];
-      const msgIdHigh = unstuffedHeader[4];
-      const msgIdLow = unstuffedHeader[5];
+      // Parse header (7 bytes)
+      const senderId = unstuffedHeader[0];
+      const receiverId = unstuffedHeader[1];
+      const senderGroupId = unstuffedHeader[2];
+      const receiverGroupId = unstuffedHeader[3];
+      const flags = unstuffedHeader[4];
+      const msgIdHigh = unstuffedHeader[5];
+      const msgIdLow = unstuffedHeader[6];
       const msgId = (msgIdHigh << 8) | msgIdLow;
       
       // Update UI
-      document.getElementById('decodedSender').textContent = `0x${byteToHex(senderAddr)}`;
-      document.getElementById('decodedReceiver').textContent = `0x${byteToHex(receiverAddr)}`;
-      document.getElementById('decodedGroup').textContent = `0x${byteToHex(groupAddr)}`;
-      document.getElementById('decodedFlags').textContent = `0x${byteToHex(flagByte)}`;
+      document.getElementById('decodedSenderId').textContent = `0x${byteToHex(senderId)}`;
+      document.getElementById('decodedReceiverId').textContent = `0x${byteToHex(receiverId)}`;
+      document.getElementById('decodedSenderGroupId').textContent = `0x${byteToHex(senderGroupId)}`;
+      document.getElementById('decodedReceiverGroupId').textContent = `0x${byteToHex(receiverGroupId)}`;
+      document.getElementById('decodedFlags').textContent = `0x${byteToHex(flags)}`;
       document.getElementById('decodedMsgId').textContent = `${msgId} (0x${msgId.toString(16).padStart(4, '0').toUpperCase()})`;
     }
     
@@ -1043,15 +1062,15 @@
       {
         title: "Basic Decoder",
         description: "Decode this message and identify the event name.",
-        message: "01010203000104021465736B746F705F737461747573001F7B22737461747573223A224F4E4C494E45222C2274696D657374616D70223A313730393531323030307D04",
+        message: "01010203000104000001021465736B746F705F737461747573001F7B22737461747573223A224F4E4C494E45222C2274696D657374616D70223A313730393531323030307D04",
         answerType: "text",
         correctAnswer: "desktop_status",
         hint: "Look for the text between STX (02) and US (1F)"
       },
       {
         title: "Escaped Characters",
-        description: "This message contains byte stuffing. What's the actual receiver address?",
-        message: "01011B2103001B0402540045005300540001F7B7D04",
+        description: "This message contains byte stuffing. What's the actual receiver ID?",
+        message: "01011B2103001B0400000102540045005300540001F7B7D04",
         answerType: "hex",
         correctAnswer: "01",
         hint: "Remember that ESC (1B) + byte is actually byte XOR 0x20"
@@ -1059,7 +1078,7 @@
       {
         title: "Message Structure",
         description: "Identify the message ID (decimal) in this protocol message.",
-        message: "01010203007B0002544553541F7B22646174615F706F696E74223A31323334567D04",
+        message: "0101020300010400007B0002544553541F7B22646174615F706F696E74223A31323334567D04",
         answerType: "number",
         correctAnswer: "123",
         hint: "The message ID is 2 bytes in the header, with high byte first"
@@ -1067,16 +1086,16 @@
       {
         title: "Complex Payload",
         description: "This message has a JSON payload. What temperature is reported?",
-        message: "010A0B0C0D270F02544550505F5345444E534F521F7B2274656D70223A32322E352C2268756D6964697479223A34352C227374617475223A226F6B227D04",
+        message: "010A0B0C0D270F00000102544550505F5345444E534F521F7B2274656D70223A32322E352C2268756D6964697479223A34352C227374617475223A226F6B227D04",
         answerType: "text",
         correctAnswer: "22.5",
         hint: "Decode the event data and look for the 'temp' field"
       },
       {
         title: "Protocol Master",
-        description: "Final challenge! Create a protocol message with sender=0x42, receiver=0xFF, group=0x01, flags=0x80, msgId=555, eventName='FINAL_TEST', and eventData='{\"result\":\"PASS\"}'",
+        description: "Final challenge! Create a protocol message with senderId=0x42, receiverId=0xFF, senderGroupId=0x01, receiverGroupId=0x00, flags=0x80, msgId=555, eventName='FINAL_TEST', and eventData='{\"result\":\"PASS\"}'",
         answerType: "build",
-        correctAnswer: "014201FF018002332B0246494E414C5F544553541F7B22726573756C74223A2250415353227D04",
+        correctAnswer: "014201FF010080022B0246494E414C5F544553541F7B22726573756C74223A2250415353227D04",
         hint: "Use the Encoder tab to build this message"
       }
     ];
@@ -1224,10 +1243,11 @@
         
         // Compare relevant fields
         return (
-          userDecoded.senderAddr === correctDecoded.senderAddr &&
-          userDecoded.receiverAddr === correctDecoded.receiverAddr &&
-          userDecoded.groupAddr === correctDecoded.groupAddr &&
-          userDecoded.flagByte === correctDecoded.flagByte &&
+          userDecoded.senderId === correctDecoded.senderId &&
+          userDecoded.receiverId === correctDecoded.receiverId &&
+          userDecoded.senderGroupId === correctDecoded.senderGroupId &&
+          userDecoded.receiverGroupId === correctDecoded.receiverGroupId &&
+          userDecoded.flags === correctDecoded.flags &&
           userDecoded.msgId === correctDecoded.msgId &&
           userDecoded.eventName === correctDecoded.eventName &&
           userDecoded.eventData === correctDecoded.eventData
@@ -1262,14 +1282,18 @@
                   headerBytes = [];
                 }
                 break;
-              case STATE_READING_HEADER:
-                if (byte === STX) {
-                  state = STATE_READING_EVENT_NAME;
-                  eventNameBytes = [];
-                } else {
-                  headerBytes.push(byte);
-                }
-                break;
+                          case STATE_READING_HEADER:
+              headerBytes.push(byte);
+              if (headerBytes.length >= 7) {
+                state = STATE_WAITING_FOR_STX;
+                eventNameBytes = [];
+              }
+              break;
+            case STATE_WAITING_FOR_STX:
+              if (byte === STX) {
+                state = STATE_READING_EVENT_NAME;
+              }
+              break;
               case STATE_READING_EVENT_NAME:
                 if (byte === US) {
                   state = STATE_READING_EVENT_DATA;
@@ -1309,17 +1333,18 @@
       const unstuffedEventName = byteUnstuff(eventNameBytes);
       const unstuffedEventData = byteUnstuff(eventDataBytes);
       
-      if (unstuffedHeader.length < 6) {
-        throw new Error("Invalid header");
+      if (unstuffedHeader.length < 7) {
+        throw new Error("Invalid header: expected 7 bytes, got " + unstuffedHeader.length);
       }
       
-      // Parse header
-      const senderAddr = unstuffedHeader[0];
-      const receiverAddr = unstuffedHeader[1];
-      const groupAddr = unstuffedHeader[2];
-      const flagByte = unstuffedHeader[3];
-      const msgIdHigh = unstuffedHeader[4];
-      const msgIdLow = unstuffedHeader[5];
+      // Parse header (7 bytes)
+      const senderId = unstuffedHeader[0];
+      const receiverId = unstuffedHeader[1];
+      const senderGroupId = unstuffedHeader[2];
+      const receiverGroupId = unstuffedHeader[3];
+      const flags = unstuffedHeader[4];
+      const msgIdHigh = unstuffedHeader[5];
+      const msgIdLow = unstuffedHeader[6];
       const msgId = (msgIdHigh << 8) | msgIdLow;
       
       // Convert to strings
@@ -1327,10 +1352,11 @@
       const eventData = bytesToString(unstuffedEventData);
       
       return {
-        senderAddr,
-        receiverAddr,
-        groupAddr,
-        flagByte,
+        senderId,
+        receiverId,
+        senderGroupId,
+        receiverGroupId,
+        flags,
         msgId,
         eventName,
         eventData

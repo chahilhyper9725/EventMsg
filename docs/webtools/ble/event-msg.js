@@ -19,13 +19,14 @@ class EventMsg {
 
     resetState() {
         this.state = 'WAITING_FOR_SOH';
-        this.headerBuffer = new Uint8Array(6);
+        this.headerBuffer = new Uint8Array(7); // Updated to 7 bytes
         this.eventNameBuffer = new Uint8Array(32);
         this.eventDataBuffer = new Uint8Array(2*1024);
         this.currentBuffer = null;
         this.currentMaxLength = 0;
         this.bufferPos = 0;
         this.escapedMode = false;
+        this.stuffedHeaderBuffer = []; // Buffer for stuffed header bytes
         console.log('State machine reset');
     }
 
@@ -65,15 +66,37 @@ class EventMsg {
         return new Uint8Array(output);
     }
 
-    send(name, data, recvAddr, groupAddr, flags) {
-        // Create header with byte stuffing
+    byteUnstuff(input) {
+        const output = [];
+        let escapedMode = false;
+
+        for (let i = 0; i < input.length; i++) {
+            const byte = input[i];
+
+            if (escapedMode) {
+                // Reverse the XOR operation
+                output.push(byte ^ 0x20);
+                escapedMode = false;
+            } else if (byte === ESC) {
+                escapedMode = true;
+            } else {
+                output.push(byte);
+            }
+        }
+
+        return new Uint8Array(output);
+    }
+
+    send(name, data, recvAddr, senderGroupId, receiverGroupId, flags) {
+        // Create header with byte stuffing (7 bytes)
         const header = new Uint8Array([
-            this.localAddr,
-            recvAddr,
-            groupAddr,
-            flags,
-            (this.msgIdCounter >> 8) & 0xFF,
-            this.msgIdCounter & 0xFF
+            this.localAddr,           // senderId
+            recvAddr,                 // receiverId
+            senderGroupId,            // senderGroupId
+            receiverGroupId,          // receiverGroupId
+            flags,                    // flags
+            (this.msgIdCounter >> 8) & 0xFF,  // messageId high
+            this.msgIdCounter & 0xFF          // messageId low
         ]);
         this.msgIdCounter++;
 
@@ -126,15 +149,19 @@ class EventMsg {
                 if (byte === SOH) {
                     console.log('Found SOH, switching to READING_HEADER');
                     this.state = 'READING_HEADER';
-                    this.currentBuffer = this.headerBuffer;
-                    this.currentMaxLength = 6;
-                    this.bufferPos = 0;
+                    this.stuffedHeaderBuffer = []; // Reset stuffed header buffer
                 }
                 break;
 
             case 'READING_HEADER':
-                this.currentBuffer[this.bufferPos++] = byte;
-                if (this.bufferPos === this.currentMaxLength) {
+                this.stuffedHeaderBuffer.push(byte);
+                // Try to unstuff what we have so far
+                const unstuffedHeader = this.byteUnstuff(new Uint8Array(this.stuffedHeaderBuffer));
+                if (unstuffedHeader.length >= 7) {
+                    // Copy the first 7 bytes to header buffer
+                    for (let i = 0; i < 7; i++) {
+                        this.headerBuffer[i] = unstuffedHeader[i];
+                    }
                     const headerHex = Array.from(this.headerBuffer).map(b => b.toString(16).padStart(2, '0')).join(' ');
                     console.log('Header complete:', headerHex);
                     this.state = 'WAITING_FOR_STX';
@@ -149,7 +176,7 @@ class EventMsg {
                     this.currentMaxLength = this.eventNameBuffer.length;
                     this.bufferPos = 0;
                 } else {
-                    console.error('Invalid sequence: Expected STX');
+                    console.error('Invalid sequence: Expected STX, got: 0x' + byte.toString(16).padStart(2, '0'));
                     return false;
                 }
                 break;
@@ -177,18 +204,20 @@ class EventMsg {
                     console.log('Found EOT, message complete');
                     const decoder = new TextDecoder();
                     const receiver = this.headerBuffer[1];
-                    const group = this.headerBuffer[2];
+                    const receiverGroup = this.headerBuffer[3];
 
                     if ((receiver === this.localAddr || receiver === 0xFF) &&
-                        (group === this.groupAddr || group === 0)) {
+                        (receiverGroup === this.groupAddr || receiverGroup === 0)) {
                         if (this.eventCallback) {
                             const eventName = decoder.decode(this.eventNameBuffer.slice(0, this.bufferPos));
                             const eventData = decoder.decode(this.eventDataBuffer.slice(0, this.bufferPos));
                             const metadata = {
-                                receiver: this.headerBuffer[1],
-                                group: this.headerBuffer[2],
-                                flags: this.headerBuffer[3],
-                                messageId: (this.headerBuffer[4] << 8) | this.headerBuffer[5]
+                                senderId: this.headerBuffer[0],
+                                receiverId: this.headerBuffer[1],
+                                senderGroupId: this.headerBuffer[2],
+                                receiverGroupId: this.headerBuffer[3],
+                                flags: this.headerBuffer[4],
+                                messageId: (this.headerBuffer[5] << 8) | this.headerBuffer[6]
                             };
                             console.log('Emitting event:', eventName.trim(), 'Data:', eventData.trim(), 'Metadata:', metadata);
                             this.eventCallback(eventName.trim(), eventData.trim(), metadata);

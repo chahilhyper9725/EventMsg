@@ -256,9 +256,9 @@
                 this.eventMsg.process(value);
             }
 
-            async sendMessage(name, data, receiver = 0xFF, group = 0x00, flags = 0x80) {
+            async sendMessage(name, data, receiver = 0xFF, senderGroupId = 0x00, receiverGroupId = 0x00, flags = 0x80) {
                 if (!this.connected) return false;
-                return this.eventMsg.send(name, data, receiver, group, flags);
+                return this.eventMsg.send(name, data, receiver, senderGroupId, receiverGroupId, flags);
             }
 
             updateMetrics() {
