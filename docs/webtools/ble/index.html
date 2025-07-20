@@ -114,11 +114,11 @@
         }
 
         .message-list {
-            max-height: 300px;
+            max-height: 500px;
             overflow-y: auto;
             border: 1px solid #eee;
             border-radius: 4px;
-            padding: 10px;
+            padding: 8px;
         }
 
         .message-item {
@@ -129,23 +129,24 @@
         }
 
         .message-header {
-            padding: 10px;
+            padding: 8px 10px;
             background: #f8f8f8;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            font-size: 13px;
         }
 
         .message-content {
             padding: 15px;
-            display: none;
+            display: block;
             background: #fff;
             border-top: 1px solid #eee;
         }
 
-        .message-content.expanded {
-            display: block;
+        .message-content.collapsed {
+            display: none;
         }
 
         .badge {
@@ -166,12 +167,57 @@
         .badge-id { background: #795548; }
 
         .metadata {
-            margin-top: 8px;
+            margin-top: 12px;
             font-family: monospace;
             color: #666;
+        }
+
+        .metadata-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 8px;
+        }
+
+        .metadata-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .metadata-label {
+            font-weight: 500;
+            color: #555;
+        }
+
+        .metadata-value {
+            font-weight: bold;
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+
+        .message-data {
+            margin-bottom: 8px;
+        }
+
+        .message-data strong {
+            color: #555;
+            font-size: 14px;
+        }
+
+        .message-data pre {
+            margin-top: 4px;
+            background: #f8f8f8;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #0066cc;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
         }
 
         .switch {
@@ -248,6 +294,17 @@
             flex: 1;
         }
 
+        .message-header:hover {
+            background: #f0f0f0;
+        }
+
+        .message-header::after {
+            content: '▼';
+            color: #666;
+            font-size: 10px;
+            margin-left: auto;
+        }
+
         .message-config {
             display: flex;
             flex-direction: column;
@@ -256,15 +313,15 @@
 
         .message-section {
             background: #f8f8f8;
-            padding: 12px;
+            padding: 10px;
             border-radius: 6px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         .config-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
+            gap: 10px;
         }
 
         textarea {
@@ -274,6 +331,9 @@
             border-radius: 4px;
             font-size: 14px;
             resize: vertical;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
 
         textarea:focus {
@@ -425,76 +485,86 @@
             </div>
         </div>
 
-        <div class="card">
-            <h2>Send Message</h2>
-            <div class="message-config" style="margin-top: 15px">
-                <div class="message-section">
-                    <div class="form-group">
-                        <label>Event Name</label>
-                        <input type="text" id="eventName" value="ping">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Data</label>
-                        <textarea id="eventData" rows="2">Ping from web</textarea>
-                    </div>
-                </div>
-
-                <div class="message-section">
-                    <h3>Header Configuration</h3>
-                    <div class="config-grid">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- Send Message Section -->
+            <div class="card">
+                <h2>Send Message</h2>
+                <div class="message-config" style="margin-top: 15px">
+                    <div class="message-section">
                         <div class="form-group">
-                            <label>Receiver ID (hex)</label>
-                            <div class="input-with-badge">
-                                <input type="text" id="receiver" value="01">
-                                <span class="hex-badge">0x</span>
-                            </div>
+                            <label>Event Name</label>
+                            <input type="text" id="eventName" value="ping">
                         </div>
 
                         <div class="form-group">
-                            <label>Sender Group ID (hex)</label>
-                            <div class="input-with-badge">
-                                <input type="text" id="senderGroupId" value="00">
-                                <span class="hex-badge">0x</span>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Receiver Group ID (hex)</label>
-                            <div class="input-with-badge">
-                                <input type="text" id="receiverGroupId" value="00">
-                                <span class="hex-badge">0x</span>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Flags (hex)</label>
-                            <div class="input-with-badge">
-                                <input type="text" id="flags" value="80">
-                                <span class="hex-badge">0x</span>
-                            </div>
+                            <label>Data</label>
+                            <textarea id="eventData" rows="2">Ping from web</textarea>
                         </div>
                     </div>
-                </div>
 
-                <div class="button-row">
-                    <button id="sendBtn" disabled style="flex: 1">Send Message</button>
-                    <button id="startTest" disabled style="flex: 1">Start Test</button>
-                    <button id="stopTest" disabled style="flex: 1">Stop Test</button>
+                    <div class="message-section">
+                        <h3>Header Configuration</h3>
+                        <div class="config-grid">
+                            <div class="form-group">
+                                <label>Sender ID (hex)</label>
+                                <div class="input-with-badge">
+                                    <input type="text" id="senderId" value="00">
+                                    <span class="hex-badge">0x</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Receiver ID (hex)</label>
+                                <div class="input-with-badge">
+                                    <input type="text" id="receiver" value="01">
+                                    <span class="hex-badge">0x</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Sender Group ID (hex)</label>
+                                <div class="input-with-badge">
+                                    <input type="text" id="senderGroupId" value="00">
+                                    <span class="hex-badge">0x</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Receiver Group ID (hex)</label>
+                                <div class="input-with-badge">
+                                    <input type="text" id="receiverGroupId" value="00">
+                                    <span class="hex-badge">0x</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Flags (hex)</label>
+                                <div class="input-with-badge">
+                                    <input type="text" id="flags" value="80">
+                                    <span class="hex-badge">0x</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="button-row">
+                        <button id="sendBtn" disabled style="flex: 1">Send Message</button>
+                        <button id="startTest" disabled style="flex: 1">Start Test</button>
+                        <button id="stopTest" disabled style="flex: 1">Stop Test</button>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h2>Received Messages</h2>
-                <div class="button-row" style="gap: 8px;">
-                    <button id="copyAllRaw" class="secondary" style="padding: 6px 12px; font-size: 12px;">Copy All Raw</button>
-                    <button id="copyAllText" class="secondary" style="padding: 6px 12px; font-size: 12px;">Copy All Text</button>
-                    <button id="clearMessages" class="secondary" style="padding: 6px 12px; font-size: 12px;">Clear</button>
+            <!-- Received Messages Section -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2>Received Messages</h2>
+                    <div class="button-row" style="gap: 8px;">
+                        <button id="clearMessages" class="secondary" style="padding: 6px 12px; font-size: 12px;">Clear All</button>
+                    </div>
                 </div>
+                <div id="messageList" class="message-list"></div>
             </div>
-            <div id="messageList" class="message-list"></div>
         </div>
 
         <div class="card">
@@ -525,6 +595,7 @@
                     name: 'Get Status',
                     event: 'STATUS',
                     data: 'GET_STATUS',
+                    senderId: '00',
                     receiver: 'FF',
                     senderGroupId: '00',
                     receiverGroupId: '00',
@@ -534,6 +605,7 @@
                     name: 'Start Control',
                     event: 'CONTROL',
                     data: 'START',
+                    senderId: '00',
                     receiver: 'FF',
                     senderGroupId: '01',
                     receiverGroupId: '01',
@@ -543,6 +615,7 @@
                     name: 'Stop Control',
                     event: 'CONTROL',
                     data: 'STOP',
+                    senderId: '00',
                     receiver: 'FF',
                     senderGroupId: '01',
                     receiverGroupId: '01',
@@ -566,6 +639,7 @@
             btn.onclick = () => {
                 document.getElementById('eventName').value = preset.event;
                 document.getElementById('eventData').value = preset.data;
+                document.getElementById('senderId').value = preset.senderId || '00';
                 document.getElementById('receiver').value = preset.receiver;
                 document.getElementById('senderGroupId').value = preset.senderGroupId || '00';
                 document.getElementById('receiverGroupId').value = preset.receiverGroupId || '00';
@@ -581,6 +655,7 @@
                 presets[index].name = name;
                 presets[index].event = document.getElementById('eventName').value;
                 presets[index].data = document.getElementById('eventData').value;
+                presets[index].senderId = document.getElementById('senderId').value;
                 presets[index].receiver = document.getElementById('receiver').value;
                 presets[index].senderGroupId = document.getElementById('senderGroupId').value;
                 presets[index].receiverGroupId = document.getElementById('receiverGroupId').value;
@@ -656,14 +731,42 @@
                         <span class="badge badge-id">ID:${metadata.messageId.toString(16).toUpperCase()}</span>
                     </div>
                     <div class="message-content" id="${id}">
-                        <pre>${data}</pre>
+                        <div class="message-data">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                                <strong>Data (${size} bytes):</strong>
+                                <button onclick="copyMessageDataFromElement('${id}')" class="copy-btn" style="padding: 4px 8px; font-size: 11px; background: #0066cc; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">Copy Data</button>
+                            </div>
+                            <div style="position: relative;">
+                                <pre style="margin: 0; word-wrap: break-word; white-space: pre-wrap;">${data}</pre>
+                            </div>
+                        </div>
                         <div class="metadata">
-                            <div>Sender ID: 0x${metadata.senderId.toString(16).padStart(2,'0').toUpperCase()}</div>
-                            <div>Receiver ID: 0x${metadata.receiverId.toString(16).padStart(2,'0').toUpperCase()}</div>
-                            <div>Sender Group: 0x${metadata.senderGroupId.toString(16).padStart(2,'0').toUpperCase()}</div>
-                            <div>Receiver Group: 0x${metadata.receiverGroupId.toString(16).padStart(2,'0').toUpperCase()}</div>
-                            <div>Flags: 0x${metadata.flags.toString(16).padStart(2,'0').toUpperCase()}</div>
-                            <div>Message ID: 0x${metadata.messageId.toString(16).padStart(4,'0').toUpperCase()}</div>
+                            <div class="metadata-grid">
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Sender ID:</span>
+                                    <span class="metadata-value">0x${metadata.senderId.toString(16).padStart(2,'0').toUpperCase()}</span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Receiver ID:</span>
+                                    <span class="metadata-value">0x${metadata.receiverId.toString(16).padStart(2,'0').toUpperCase()}</span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Sender Group:</span>
+                                    <span class="metadata-value">0x${metadata.senderGroupId.toString(16).padStart(2,'0').toUpperCase()}</span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Receiver Group:</span>
+                                    <span class="metadata-value">0x${metadata.receiverGroupId.toString(16).padStart(2,'0').toUpperCase()}</span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Flags:</span>
+                                    <span class="metadata-value">0x${metadata.flags.toString(16).padStart(2,'0').toUpperCase()}</span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Message ID:</span>
+                                    <span class="metadata-value">0x${metadata.messageId.toString(16).padStart(4,'0').toUpperCase()}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -674,7 +777,30 @@
 
         function toggleMessage(id) {
             const content = document.getElementById(id);
-            content.classList.toggle('expanded');
+            content.classList.toggle('collapsed');
+        }
+
+        function copyMessageDataFromElement(id) {
+            const messageElement = document.getElementById(id);
+            const dataElement = messageElement.querySelector('pre');
+            const data = dataElement.textContent;
+            
+            navigator.clipboard.writeText(data).then(() => {
+                // Show feedback
+                const btn = messageElement.querySelector('.copy-btn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#0066cc';
+                }, 1000);
+                
+                log('Message data copied to clipboard');
+            }).catch(err => {
+                log('Failed to copy message data: ' + err);
+            });
         }
 
         function log(message, isDebug = false) {
@@ -864,10 +990,14 @@
         document.getElementById('sendBtn').addEventListener('click', async () => {
             const name = document.getElementById('eventName').value;
             const data = document.getElementById('eventData').value;
+            const senderId = parseInt(document.getElementById('senderId').value, 16);
             const receiver = parseInt(document.getElementById('receiver').value, 16);
             const senderGroupId = parseInt(document.getElementById('senderGroupId').value, 16);
             const receiverGroupId = parseInt(document.getElementById('receiverGroupId').value, 16);
             const flags = parseInt(document.getElementById('flags').value, 16);
+
+            // Set the sender ID in the EventMsg instance
+            bleHandler.eventMsg.setAddr(senderId);
 
             await bleHandler.sendMessage(name, data, receiver, senderGroupId, receiverGroupId, flags);
             totalBytes += data.length;
@@ -883,6 +1013,7 @@
                 name,
                 event: document.getElementById('eventName').value,
                 data: document.getElementById('eventData').value,
+                senderId: document.getElementById('senderId').value,
                 receiver: document.getElementById('receiver').value,
                 senderGroupId: document.getElementById('senderGroupId').value,
                 receiverGroupId: document.getElementById('receiverGroupId').value,
@@ -901,48 +1032,6 @@
 
         document.getElementById('clearMessages').addEventListener('click', () => {
             document.getElementById('messageList').innerHTML = '';
-        });
-
-        document.getElementById('copyAllRaw').addEventListener('click', () => {
-            const messages = document.querySelectorAll('#messageList .message-item');
-            let rawData = '';
-            
-            messages.forEach(msg => {
-                const timestamp = msg.querySelector('.message-timestamp').textContent;
-                const eventName = msg.querySelector('.message-event').textContent;
-                const data = msg.querySelector('pre').textContent;
-                const metadata = msg.querySelector('.metadata').textContent;
-                
-                rawData += `[${timestamp}] ${eventName}\n`;
-                rawData += `Data: ${data}\n`;
-                rawData += `Metadata: ${metadata}\n`;
-                rawData += '---\n';
-            });
-            
-            navigator.clipboard.writeText(rawData).then(() => {
-                log('Raw message data copied to clipboard');
-            }).catch(err => {
-                log('Failed to copy: ' + err);
-            });
-        });
-
-        document.getElementById('copyAllText').addEventListener('click', () => {
-            const messages = document.querySelectorAll('#messageList .message-item');
-            let textData = '';
-            
-            messages.forEach(msg => {
-                const timestamp = msg.querySelector('.message-timestamp').textContent;
-                const eventName = msg.querySelector('.message-event').textContent;
-                const data = msg.querySelector('pre').textContent;
-                
-                textData += `[${timestamp}] ${eventName}: ${data}\n`;
-            });
-            
-            navigator.clipboard.writeText(textData).then(() => {
-                log('Message text copied to clipboard');
-            }).catch(err => {
-                log('Failed to copy: ' + err);
-            });
         });
 
         document.getElementById('writeWithResponse').addEventListener('change', (e) => {

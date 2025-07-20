@@ -1,0 +1,2720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EventMsg Protocol Tester</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "@eventmsg/core": "https://cdn.jsdelivr.net/npm/@eventmsg/core@latest",
+        "@eventmsg/transport-webble": "https://cdn.jsdelivr.net/npm/@eventmsg/transport-webble@latest"
+      }
+    }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #161616;
+            --bg-tertiary: #1f1f1f;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --text-tertiary: #707070;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --accent-light: #60a5fa;
+            --success: #10b981;
+            --success-light: #34d399;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --border: #2a2a2a;
+            --border-light: #3a3a3a;
+            --gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            
+            /* Spacing */
+            --space-xs: 0.25rem;
+            --space-sm: 0.5rem;
+            --space-md: 1rem;
+            --space-lg: 1.5rem;
+            --space-xl: 2rem;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .app-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Compact Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1.5rem;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--gradient);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .logo h1 {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        /* Quick Actions in Header */
+        .quick-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .quick-action-btn {
+            padding: 0.375rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+
+        .quick-action-btn:hover {
+            background: #2a2a2a;
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 0.875rem;
+            background: var(--bg-tertiary);
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .connection-status:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent);
+            transform: scale(1.02);
+        }
+
+        .connection-status:active {
+            transform: scale(0.98);
+        }
+
+        .connection-action {
+            opacity: 0.7;
+            margin-left: 0.25rem;
+        }
+
+        .connection-modal {
+            position: fixed;
+            top: 60px;
+            right: 1.5rem;
+            background: #1a1a1a;
+            border: 2px solid var(--accent);
+            border-radius: 12px;
+            padding: 1rem;
+            min-width: 280px;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            transform: translateY(-10px);
+            opacity: 0;
+            transition: all 0.2s ease;
+        }
+
+        .connection-modal.show {
+            display: block;
+            transform: translateY(0);
+            opacity: 1 !important;
+        }
+
+        .connection-modal:hover {
+            opacity: 1 !important;
+            background: #1a1a1a !important;
+        }
+
+        .connection-modal::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            right: 1rem;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 8px solid var(--accent);
+        }
+
+        .connection-modal h3 {
+            margin-bottom: 0.75rem;
+            font-size: 0.875rem;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .connection-modal .form-label {
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .connection-modal .form-input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-light);
+            color: #ffffff;
+        }
+
+        .connection-modal .form-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .connection-modal * {
+            opacity: 1 !important;
+        }
+
+        .connection-modal .btn {
+            opacity: 1 !important;
+            background-color: var(--accent) !important;
+        }
+
+        .connection-modal .btn:hover {
+            opacity: 1 !important;
+            background-color: var(--accent-hover) !important;
+        }
+
+        /* Mobile Accordion Styles */
+        .mobile-accordions {
+            display: none;
+        }
+
+        .accordion-section {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: var(--bg-secondary);
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .accordion-header:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .accordion-icon {
+            margin-right: 0.75rem;
+            font-size: 1rem;
+        }
+
+        .accordion-title {
+            flex: 1;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .accordion-toggle {
+            font-size: 0.75rem;
+            transform: rotate(0deg);
+            transition: transform 0.2s ease;
+        }
+
+        .accordion-header.collapsed .accordion-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .accordion-content {
+            padding: 0 1rem 1rem 1rem;
+            border-top: 1px solid var(--border);
+            display: block;
+            animation: slideDown 0.2s ease;
+        }
+
+        .accordion-content.collapsed {
+            display: none;
+        }
+
+        .accordion-footer {
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--bg-primary);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 300px;
+            }
+        }
+
+        .settings-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-tertiary);
+            transition: all 0.3s ease;
+        }
+
+        .status-indicator.connected {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+        }
+
+        /* Main Layout - Better Space Usage */
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Collapsible Sidebar */
+        .sidebar {
+            width: 320px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s ease;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .sidebar.collapsed {
+            width: 0;
+        }
+
+        /* Sidebar Tabs */
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-primary);
+        }
+
+        .sidebar-tab {
+            flex: 1;
+            padding: 0.75rem;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .sidebar-tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .sidebar-tab.active {
+            color: var(--accent);
+            background: var(--bg-secondary);
+        }
+
+        .sidebar-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+        }
+
+        /* Sidebar Content */
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-md);
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* Compact Forms */
+        .form-section {
+            margin-bottom: var(--space-lg);
+        }
+
+        .form-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-tertiary);
+            margin-bottom: var(--space-sm);
+        }
+
+        .form-group {
+            margin-bottom: var(--space-md);
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: var(--space-xs);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.8125rem;
+            transition: all 0.2s ease;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Compact Input Groups */
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-sm);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            position: relative;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--accent);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: var(--success-light);
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--error);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.3);
+            border-color: var(--error);
+        }
+
+        .btn-full {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: var(--space-sm);
+        }
+
+
+
+        .presets-content {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .presets-list {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+
+        .preset-chip {
+            padding: 0.375rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+
+        .preset-chip:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .preset-chip .delete {
+            margin-left: 0.25rem;
+            opacity: 0.6;
+            transition: opacity 0.2s ease;
+        }
+
+        .preset-chip:hover .delete {
+            opacity: 1;
+        }
+
+        .add-preset-btn {
+            padding: 0.375rem;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid var(--accent);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .add-preset-btn:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Preset Modal */
+        .preset-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            z-index: 1001;
+            width: 90%;
+            max-width: 400px;
+            display: none;
+        }
+
+        .preset-modal.show {
+            display: block;
+        }
+
+        .preset-modal h3 {
+            margin-bottom: 1rem;
+            font-size: 1.125rem;
+        }
+
+        .preset-modal input {
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Message Header Bar */
+        .message-header-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .message-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .message-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        /* Message Filters */
+        .message-filters {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .filter-input {
+            padding: 0.375rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            width: 150px;
+        }
+
+        .view-mode-btn {
+            padding: 0.375rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .view-mode-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        /* Messages Container */
+        .messages-container {
+            flex: 1;
+            padding: var(--space-md);
+            overflow-y: auto;
+            background: var(--bg-primary);
+        }
+
+        /* Compact Message Style */
+        .message {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .message:hover {
+            border-color: var(--border-light);
+            transform: translateX(2px);
+        }
+
+        .message.compact {
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.375rem;
+        }
+
+        .message-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.875rem;
+        }
+
+        .message.compact .message-icon {
+            width: 24px;
+            height: 24px;
+            font-size: 0.75rem;
+        }
+
+        .message-icon.sent {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-light);
+        }
+
+        .message-icon.received {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .message-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .message.compact .message-header {
+            margin-bottom: 0;
+        }
+
+        .message-event {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+
+        .message.compact .message-event {
+            font-size: 0.8125rem;
+        }
+
+        .message-meta {
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .message-data {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            word-break: break-all;
+            margin-top: 0.25rem;
+        }
+
+        .message.compact .message-data {
+            display: none;
+        }
+
+        .message-timestamp {
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
+            margin-left: auto;
+        }
+
+        /* Subscription Tags */
+        .subscription-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.375rem;
+        }
+
+        .subscription-tag {
+            padding: 0.25rem 0.625rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.75rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            transition: all 0.2s ease;
+        }
+
+        .subscription-tag:hover {
+            border-color: var(--error);
+        }
+
+        .subscription-tag .remove {
+            cursor: pointer;
+            color: var(--text-tertiary);
+            font-size: 0.875rem;
+            line-height: 1;
+        }
+
+        /* Message Detail Modal */
+        .message-detail {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .message-detail.show {
+            display: block;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 999;
+            display: none;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-overlay.show {
+            display: block;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-tertiary);
+        }
+
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.5;
+        }
+
+        /* Loading */
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-light);
+        }
+
+        /* Mobile sidebar overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 99;
+        }
+
+        /* Ultra Responsive Design */
+        
+        /* Small Mobile (320px - 768px) */
+        @media (max-width: 768px) {
+            /* Show mobile accordions and hide sidebar */
+            .mobile-accordions {
+                display: block;
+                padding: 0.5rem;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .quick-actions {
+                display: none;
+            }
+
+            /* Compact presets on mobile */
+            .message-presets {
+                padding: 0.5rem;
+            }
+
+            .presets-content {
+                gap: 0.375rem;
+            }
+
+            .presets-list {
+                gap: 0.375rem;
+            }
+        }
+
+        /* Small Mobile (320px - 480px) */
+        @media (max-width: 480px) {
+            :root {
+                --space-xs: 0.125rem;
+                --space-sm: 0.25rem;
+                --space-md: 0.5rem;
+                --space-lg: 0.75rem;
+                --space-xl: 1rem;
+            }
+
+            .header {
+                padding: 0.375rem 0.75rem;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .header-left {
+                gap: 0.75rem;
+            }
+
+            .logo h1 {
+                font-size: 0.875rem;
+                display: none; /* Hide title on very small screens */
+            }
+
+            .quick-action-btn {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+                gap: 0.25rem;
+            }
+
+            .connection-status {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+            }
+
+            .sidebar {
+                width: 100%;
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100%;
+                z-index: 100;
+                box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+                transform: translateX(-100%); /* Start hidden */
+                transition: transform 0.3s ease;
+            }
+            
+            .sidebar:not(.collapsed) {
+                transform: translateX(0); /* Show when not collapsed */
+            }
+            
+            .sidebar.collapsed {
+                transform: translateX(-100%); /* Hide when collapsed */
+                width: 100%;
+            }
+
+            .sidebar-content {
+                padding: 0.5rem;
+            }
+
+            .form-input {
+                font-size: 0.875rem;
+                padding: 0.625rem 0.75rem;
+            }
+
+            .btn {
+                padding: 0.75rem 1rem;
+                font-size: 0.875rem;
+                min-height: 44px; /* Touch-friendly */
+            }
+
+            .message-header-bar {
+                padding: 0.5rem;
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: stretch;
+            }
+
+            .message-title {
+                font-size: 0.75rem;
+                justify-content: center;
+            }
+
+            .message-stats {
+                display: none;
+            }
+
+            .message-filters {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .filter-input {
+                width: 100%;
+                order: 1;
+            }
+
+            .btn-group {
+                justify-content: center;
+                order: 2;
+            }
+
+            .messages-container {
+                padding: 0.5rem;
+            }
+
+            .message {
+                padding: 0.5rem;
+                gap: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .message-icon {
+                width: 24px;
+                height: 24px;
+                font-size: 0.75rem;
+            }
+
+            .message-event {
+                font-size: 0.75rem;
+            }
+
+            .message-meta {
+                font-size: 0.625rem;
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .message-timestamp {
+                font-size: 0.625rem;
+            }
+
+
+            .preset-chip {
+                font-size: 0.6875rem;
+                padding: 0.25rem 0.5rem;
+            }
+
+            .add-preset-btn {
+                width: 24px;
+                height: 24px;
+            }
+
+            /* Modal improvements for small screens */
+            .message-detail {
+                width: 95%;
+                max-width: none;
+                max-height: 90vh;
+                padding: 1rem;
+            }
+
+            .preset-modal {
+                width: 95%;
+                max-width: none;
+                padding: 1rem;
+            }
+        }
+
+        /* Mobile (481px - 768px) */
+        @media (min-width: 481px) and (max-width: 768px) {
+            .header {
+                padding: 0.5rem 1rem;
+            }
+
+            .logo h1 {
+                font-size: 1rem;
+            }
+
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100%;
+                z-index: 100;
+                box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+                transform: translateX(0);
+                transition: transform 0.3s ease;
+                width: 320px;
+            }
+            
+            .sidebar.collapsed {
+                transform: translateX(-100%);
+                width: 320px;
+            }
+
+            .message-stats {
+                display: flex;
+                gap: 0.5rem;
+            }
+
+            .message-header-bar {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .message-filters {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                width: 100%;
+            }
+
+            .filter-input {
+                flex: 1;
+                min-width: 150px;
+            }
+
+            .btn {
+                padding: 0.625rem 0.875rem;
+                font-size: 0.875rem;
+                min-height: 44px;
+            }
+
+            .message {
+                padding: 0.625rem;
+            }
+
+        }
+
+        /* Tablet (769px - 1024px) */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .sidebar {
+                width: 280px;
+            }
+
+            .header {
+                padding: 0.75rem 1.25rem;
+            }
+
+            .message-header-bar {
+                padding: 0.75rem;
+            }
+
+            .messages-container {
+                padding: 0.75rem;
+            }
+
+
+            /* Better use of tablet space */
+            .input-row {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .form-input {
+                font-size: 0.8125rem;
+            }
+        }
+
+        /* Desktop (1025px - 1440px) */
+        @media (min-width: 1025px) and (max-width: 1440px) {
+            .sidebar {
+                width: 320px;
+            }
+
+            .header {
+                padding: 0.75rem 1.5rem;
+            }
+        }
+
+        /* Large Desktop (1441px+) */
+        @media (min-width: 1441px) {
+            .sidebar {
+                width: 380px;
+            }
+
+            .header {
+                padding: 1rem 2rem;
+            }
+
+            .messages-container {
+                padding: 1.5rem;
+            }
+
+            .message {
+                padding: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .message-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 1rem;
+            }
+
+        }
+
+        /* Touch-friendly improvements for all mobile devices */
+        @media (max-width: 768px) {
+            .sidebar-overlay.show {
+                display: block;
+            }
+
+            /* Ensure all interactive elements are touch-friendly */
+            .sidebar-tab {
+                min-height: 44px;
+                padding: 0.75rem;
+            }
+
+            .subscription-tag {
+                min-height: 32px;
+                padding: 0.375rem 0.75rem;
+            }
+
+            .view-mode-btn {
+                min-width: 44px;
+                min-height: 44px;
+                padding: 0.75rem;
+            }
+
+            /* Improve modal touch interactions */
+            .modal-overlay {
+                backdrop-filter: blur(5px);
+            }
+
+            .message-detail {
+                border-radius: 12px 12px 0 0;
+                transform: translate(-50%, -45%);
+            }
+
+            .preset-modal {
+                border-radius: 12px 12px 0 0;
+                transform: translate(-50%, -45%);
+            }
+        }
+
+        /* Landscape orientation optimizations */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .header {
+                padding: 0.25rem 0.75rem;
+            }
+
+            .message-header-bar {
+                padding: 0.5rem;
+            }
+
+            .messages-container {
+                padding: 0.5rem;
+            }
+
+
+            .sidebar-content {
+                padding: 0.5rem;
+            }
+        }
+
+        /* High DPI display optimizations */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+            .status-indicator {
+                width: 8px;
+                height: 8px;
+            }
+
+            .logo-icon {
+                font-size: 1.375rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Compact Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <div class="logo-icon">⚡</div>
+                    <h1>EventMsg Tester</h1>
+                </div>
+                <div class="quick-actions">
+                    <button class="quick-action-btn" id="toggle-sidebar">
+                        <span>☰</span>
+                        <span class="sidebar-text">Sidebar</span>
+                    </button>
+                </div>
+            </div>
+            <div class="connection-status" id="connection-status-btn">
+                <div class="status-indicator" id="status-indicator"></div>
+                <span class="status-text" id="status-text">Disconnected</span>
+                <span class="connection-action" id="connection-action">🔗</span>
+            </div>
+            
+            <!-- Connection Modal (outside of connection-status to avoid hover conflicts) -->
+            <div class="connection-modal" id="connection-modal">
+                <h3>Device Connection</h3>
+                <div class="input-row">
+                    <div class="form-group">
+                        <label class="form-label">Device Address</label>
+                        <input type="number" class="form-input" id="device-address" value="0" min="0" max="255">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Group Address</label>
+                        <input type="number" class="form-input" id="group-address" value="0" min="0" max="255">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Log Level</label>
+                    <select class="form-input" id="log-level-select" title="Select logging verbosity. Check browser console to see logs.">
+                        <option value="-999">Silent - No logs</option>
+                        <option value="0">Error - Errors only</option>
+                        <option value="1">Warning - Warnings + Errors</option>
+                        <option value="2">Log - Normal logging</option>
+                        <option value="3" selected>Info - Detailed logging</option>
+                        <option value="4">Debug - Debug information</option>
+                        <option value="5">Trace - All logs</option>
+                    </select>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-success btn-full" id="connect-btn">
+                        <span>🔗</span>
+                        Connect
+                    </button>
+                    <button class="btn btn-danger btn-full" id="disconnect-btn" style="display: none;">
+                        <span>⛔</span>
+                        Disconnect
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Container -->
+        <div class="main-container">
+            <!-- Mobile Sidebar Overlay -->
+            <div class="sidebar-overlay" id="sidebar-overlay"></div>
+            
+            <!-- Sidebar with Tabs -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" data-tab="message">Message</button>
+                    <button class="sidebar-tab" data-tab="events">Events</button>
+                </div>
+                
+                <div class="sidebar-content">
+                    <!-- Message Tab -->
+                    <div class="tab-panel active" id="message-tab">
+                        <div class="form-section">
+                            <div class="section-title">Message Details</div>
+                            <div class="form-group">
+                                <label class="form-label">Event Name</label>
+                                <input type="text" class="form-input" id="event-name" value="test_message" placeholder="e.g., sensor_data">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Message Data</label>
+                                <input type="text" class="form-input" id="message-data" value='{"message": "Hello ESP32!"}' placeholder='{"key": "value"}'>
+                            </div>
+                            
+                            <!-- Wait for Response Toggle -->
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="wait-for-response" style="margin-right: 0.5rem;">
+                                    Wait for response
+                                </label>
+                            </div>
+                            
+                            <!-- Wait for Response Configuration -->
+                            <div id="waitfor-config" style="display: none; margin-left: 1rem; border-left: 2px solid var(--accent); padding-left: 0.75rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Expected Response Event</label>
+                                    <input type="text" class="form-input" id="expected-event" value="pong" placeholder="e.g., pong, response">
+                                </div>
+                                <div class="input-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Timeout (ms)</label>
+                                        <input type="number" class="form-input" id="waitfor-timeout" value="5000" min="1000" max="30000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">
+                                            <input type="checkbox" id="filter-by-sender" style="margin-right: 0.5rem;">
+                                            Filter by sender
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <div class="section-title">Addressing</div>
+                            <div class="input-row">
+                                <div class="form-group">
+                                    <label class="form-label">Receiver ID</label>
+                                    <input type="number" class="form-input" id="receiver-id" value="1" min="0" max="255">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Receiver Group</label>
+                                    <input type="number" class="form-input" id="receiver-group" value="0" min="0" max="255">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Message Flags</label>
+                                <input type="number" class="form-input" id="message-flags" value="0" min="0" max="255">
+                            </div>
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn btn-primary btn-full" id="send-btn" disabled>
+                                <span id="send-btn-icon">📤</span>
+                                <span id="send-btn-text">Send Message</span>
+                            </button>
+                            <button class="btn btn-secondary" id="save-preset-btn" disabled>
+                                <span>💾</span>
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Events Tab -->
+                    <div class="tab-panel" id="events-tab">
+                        <div class="form-section">
+                            <div class="section-title">Event Subscriptions</div>
+                            <div class="form-group">
+                                <label class="form-label">Subscribe to Event</label>
+                                <div class="btn-group">
+                                    <input type="text" class="form-input" id="subscribe-event" placeholder="e.g., sensor_data">
+                                    <button class="btn btn-secondary" id="subscribe-btn" style="flex-shrink: 0;">
+                                        <span>+</span>
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="subscription-list" id="subscription-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="main-content">
+                <!-- Mobile Accordion Sections -->
+                <div class="mobile-accordions">
+                    <!-- Combined Settings Accordion -->
+                    <div class="accordion-section" id="settings-accordion">
+                        <div class="accordion-header collapsed" id="settings-accordion-header">
+                            <span class="accordion-icon">⚙️</span>
+                            <span class="accordion-title">Settings</span>
+                            <span class="accordion-toggle">▼</span>
+                        </div>
+                        <div class="accordion-content collapsed" id="settings-accordion-content">
+                            <!-- Message Configuration Section -->
+                            <div class="settings-section">
+                                <div class="section-title">Message Configuration</div>
+                                <div class="form-group">
+                                    <label class="form-label">Event Name</label>
+                                    <input type="text" class="form-input" id="event-name-mobile" value="test_message" placeholder="e.g., sensor_data">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Message Data</label>
+                                    <input type="text" class="form-input" id="message-data-mobile" value='{"message": "Hello ESP32!"}' placeholder='{"key": "value"}'>
+                                </div>
+                                
+                                <!-- Wait for Response Toggle -->
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" id="wait-for-response-mobile" style="margin-right: 0.5rem;">
+                                        Wait for response
+                                    </label>
+                                </div>
+                                
+                                <!-- Wait for Response Configuration -->
+                                <div id="waitfor-config-mobile" style="display: none; margin-left: 1rem; border-left: 2px solid var(--accent); padding-left: 0.75rem;">
+                                    <div class="form-group">
+                                        <label class="form-label">Expected Response Event</label>
+                                        <input type="text" class="form-input" id="expected-event-mobile" value="pong" placeholder="e.g., pong, response">
+                                    </div>
+                                    <div class="input-row">
+                                        <div class="form-group">
+                                            <label class="form-label">Timeout (ms)</label>
+                                            <input type="number" class="form-input" id="waitfor-timeout-mobile" value="5000" min="1000" max="30000">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">
+                                                <input type="checkbox" id="filter-by-sender-mobile" style="margin-right: 0.5rem;">
+                                                Filter by sender
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="input-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Receiver ID</label>
+                                        <input type="number" class="form-input" id="receiver-id-mobile" value="1" min="0" max="255">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Receiver Group</label>
+                                        <input type="number" class="form-input" id="receiver-group-mobile" value="0" min="0" max="255">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Flags</label>
+                                    <input type="number" class="form-input" id="message-flags-mobile" value="0" min="0" max="255">
+                                </div>
+                            </div>
+
+                            <!-- Event Subscription Section -->
+                            <div class="settings-section">
+                                <div class="section-title">Event Subscriptions</div>
+                                <div class="form-group">
+                                    <label class="form-label">Subscribe to Event</label>
+                                    <div class="btn-group">
+                                        <input type="text" class="form-input" id="subscribe-event-mobile" placeholder="e.g., sensor_data">
+                                        <button class="btn btn-secondary" id="subscribe-btn-mobile" style="flex-shrink: 0;">
+                                            <span>+</span>
+                                            Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="subscription-list" id="subscription-list-mobile"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Always Visible Action Buttons -->
+                        <div class="accordion-footer">
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="send-btn-mobile" disabled style="flex: 2;">
+                                    <span id="send-btn-mobile-icon">📤</span>
+                                    <span id="send-btn-mobile-text">Send Message</span>
+                                </button>
+                                <button class="btn btn-secondary" id="save-preset-btn-mobile" disabled style="flex: 1;">
+                                    <span>💾</span>
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Message Header Bar -->
+                <div class="message-header-bar">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <h2 class="message-title">
+                            <span>💬</span>
+                            Messages
+                        </h2>
+                        <div class="message-stats">
+                            <div class="stat-item">
+                                <span>📤</span>
+                                <span id="sent-count">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>📥</span>
+                                <span id="received-count">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>⏱️</span>
+                                <span id="uptime">00:00</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="message-filters">
+                        <input type="text" class="filter-input" id="filter-input" placeholder="Filter events...">
+                        <div class="btn-group">
+                            <button class="view-mode-btn active" id="view-normal" title="Normal View">▦</button>
+                            <button class="view-mode-btn" id="view-compact" title="Compact View">▬</button>
+                        </div>
+                        <button class="btn btn-secondary" id="clear-btn">
+                            <span>🗑️</span>
+                            Clear
+                        </button>
+                    </div>
+                    
+                    <!-- Message Presets -->
+                    <div class="message-presets" id="message-presets">
+                        <div class="presets-content">
+                            <div class="presets-list" id="presets-list"></div>
+                            <button class="add-preset-btn" id="add-preset-btn-header" title="Save current message as preset">
+                                <span>+</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Messages Container -->
+                <div class="messages-container" id="messages-container">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>No messages yet. Connect to a device to start.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+
+        <!-- Modals -->
+        <div class="modal-overlay" id="modal-overlay"></div>
+        <div class="message-detail" id="message-detail"></div>
+        <div class="preset-modal" id="preset-modal">
+            <h3>Save Message Preset</h3>
+            <input type="text" class="form-input" id="preset-name-input" placeholder="Enter preset name..." maxlength="30">
+            <div class="btn-group">
+                <button class="btn btn-primary btn-full" id="confirm-preset-btn">Save</button>
+                <button class="btn btn-secondary btn-full" id="cancel-preset-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import EventMsg and WebBLE transport  
+        import { EventMsg } from '@eventmsg/core';
+        import { WebBLETransport, createNordicUARTConfig } from '@eventmsg/transport-webble';
+        
+
+        // State
+        let eventMsg = null;
+        let transport = null;
+        let subscriptions = new Set(['*']);
+        let messageCount = 0;
+        let sentCount = 0;
+        let receivedCount = 0;
+        let connectTime = null;
+        let viewMode = 'normal';
+        let messageFilter = '';
+        let customPresets = {};
+        let isWaitingForResponse = false;
+        let waitingForEvent = null; // Track which event we're waiting for
+        let customWaitResolver = null; // Custom wait promise resolver
+        let waitStartTime = null; // When we started waiting
+        let currentLogLevel = 3; // Default log level (Info)
+
+        // Load presets from localStorage
+        function loadPresets() {
+            const saved = localStorage.getItem('eventmsg-presets');
+            if (saved) {
+                customPresets = JSON.parse(saved);
+                updatePresetsBar();
+            }
+        }
+
+        // Save presets to localStorage
+        function savePresets() {
+            localStorage.setItem('eventmsg-presets', JSON.stringify(customPresets));
+        }
+
+        // Save form data to localStorage
+        function saveFormData() {
+            const formData = {
+                eventName: (eventNameInput || eventNameMobile).value,
+                messageData: (messageDataInput || messageDataMobile).value,
+                receiverId: (receiverIdInput || receiverIdMobile).value,
+                receiverGroup: (receiverGroupInput || receiverGroupMobile).value,
+                messageFlags: (messageFlagsInput || messageFlagsMobile).value,
+                deviceAddress: deviceAddressInput.value,
+                groupAddress: groupAddressInput.value,
+                logLevel: logLevelSelect.value,
+                waitForResponse: (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked,
+                expectedEvent: (expectedEventInput || expectedEventMobile).value,
+                waitForTimeout: (waitForTimeoutInput || waitForTimeoutMobile).value,
+                filterBySender: (filterBySenderCheckbox || filterBySenderMobileCheckbox).checked
+            };
+            localStorage.setItem('eventmsg-form-data', JSON.stringify(formData));
+        }
+
+        // Load form data from localStorage
+        function loadFormData() {
+            const saved = localStorage.getItem('eventmsg-form-data');
+            if (saved) {
+                const formData = JSON.parse(saved);
+                
+                // Load into both desktop and mobile inputs
+                if (eventNameInput) eventNameInput.value = formData.eventName || 'test_message';
+                if (eventNameMobile) eventNameMobile.value = formData.eventName || 'test_message';
+                
+                if (messageDataInput) messageDataInput.value = formData.messageData || '{"message": "Hello ESP32!"}';
+                if (messageDataMobile) messageDataMobile.value = formData.messageData || '{"message": "Hello ESP32!"}';
+                
+                if (receiverIdInput) receiverIdInput.value = formData.receiverId || '1';
+                if (receiverIdMobile) receiverIdMobile.value = formData.receiverId || '1';
+                
+                if (receiverGroupInput) receiverGroupInput.value = formData.receiverGroup || '0';
+                if (receiverGroupMobile) receiverGroupMobile.value = formData.receiverGroup || '0';
+                
+                if (messageFlagsInput) messageFlagsInput.value = formData.messageFlags || '0';
+                if (messageFlagsMobile) messageFlagsMobile.value = formData.messageFlags || '0';
+                
+                if (deviceAddressInput) deviceAddressInput.value = formData.deviceAddress || '0';
+                if (groupAddressInput) groupAddressInput.value = formData.groupAddress || '0';
+                if (logLevelSelect) {
+                    logLevelSelect.value = formData.logLevel || '3';
+                    currentLogLevel = parseInt(formData.logLevel || '3');
+                }
+                
+                // Load waitFor settings
+                if (waitForResponseCheckbox) waitForResponseCheckbox.checked = formData.waitForResponse || false;
+                if (waitForResponseMobileCheckbox) waitForResponseMobileCheckbox.checked = formData.waitForResponse || false;
+                
+                if (expectedEventInput) expectedEventInput.value = formData.expectedEvent || 'pong';
+                if (expectedEventMobile) expectedEventMobile.value = formData.expectedEvent || 'pong';
+                
+                if (waitForTimeoutInput) waitForTimeoutInput.value = formData.waitForTimeout || '5000';
+                if (waitForTimeoutMobile) waitForTimeoutMobile.value = formData.waitForTimeout || '5000';
+                
+                if (filterBySenderCheckbox) filterBySenderCheckbox.checked = formData.filterBySender || false;
+                if (filterBySenderMobileCheckbox) filterBySenderMobileCheckbox.checked = formData.filterBySender || false;
+                
+                // Update UI based on waitFor toggle state
+                updateWaitForUI();
+            }
+        }
+
+        // Save subscriptions to localStorage
+        function saveSubscriptions() {
+            localStorage.setItem('eventmsg-subscriptions', JSON.stringify([...subscriptions]));
+        }
+
+        // Load subscriptions from localStorage
+        function loadSubscriptions() {
+            const saved = localStorage.getItem('eventmsg-subscriptions');
+            if (saved) {
+                const savedSubscriptions = JSON.parse(saved);
+                subscriptions = new Set(savedSubscriptions);
+            } else {
+                subscriptions = new Set(['*']); // Default subscription
+            }
+        }
+
+        // DOM Elements
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const savePresetBtn = document.getElementById('save-preset-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const subscribeBtn = document.getElementById('subscribe-btn');
+        const messagesContainer = document.getElementById('messages-container');
+        const subscriptionList = document.getElementById('subscription-list');
+        const sidebar = document.getElementById('sidebar');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar');
+        const filterInput = document.getElementById('filter-input');
+        const viewNormalBtn = document.getElementById('view-normal');
+        const viewCompactBtn = document.getElementById('view-compact');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const messageDetail = document.getElementById('message-detail');
+        const presetsList = document.getElementById('presets-list');
+        const addPresetBtn = document.getElementById('add-preset-btn-header');
+        const presetModal = document.getElementById('preset-modal');
+        const presetNameInput = document.getElementById('preset-name-input');
+        const confirmPresetBtn = document.getElementById('confirm-preset-btn');
+        const cancelPresetBtn = document.getElementById('cancel-preset-btn');
+        
+        // Connection Elements
+        const connectionStatusBtn = document.getElementById('connection-status-btn');
+        const connectionModal = document.getElementById('connection-modal');
+        
+        // Mobile Accordion Elements
+        const settingsAccordionHeader = document.getElementById('settings-accordion-header');
+        const settingsAccordionContent = document.getElementById('settings-accordion-content');
+        
+        // Mobile Form Elements
+        const eventNameMobile = document.getElementById('event-name-mobile');
+        const messageDataMobile = document.getElementById('message-data-mobile');
+        const receiverIdMobile = document.getElementById('receiver-id-mobile');
+        const receiverGroupMobile = document.getElementById('receiver-group-mobile');
+        const messageFlagsMobile = document.getElementById('message-flags-mobile');
+        const sendBtnMobile = document.getElementById('send-btn-mobile');
+        const savePresetBtnMobile = document.getElementById('save-preset-btn-mobile');
+        const subscribeEventMobile = document.getElementById('subscribe-event-mobile');
+        const subscribeBtnMobile = document.getElementById('subscribe-btn-mobile');
+        const subscriptionListMobile = document.getElementById('subscription-list-mobile');
+        
+        // WaitFor Elements
+        const waitForResponseCheckbox = document.getElementById('wait-for-response');
+        const waitForResponseMobileCheckbox = document.getElementById('wait-for-response-mobile');
+        const waitForConfig = document.getElementById('waitfor-config');
+        const waitForConfigMobile = document.getElementById('waitfor-config-mobile');
+        const expectedEventInput = document.getElementById('expected-event');
+        const expectedEventMobile = document.getElementById('expected-event-mobile');
+        const waitForTimeoutInput = document.getElementById('waitfor-timeout');
+        const waitForTimeoutMobile = document.getElementById('waitfor-timeout-mobile');
+        const filterBySenderCheckbox = document.getElementById('filter-by-sender');
+        const filterBySenderMobileCheckbox = document.getElementById('filter-by-sender-mobile');
+        
+        // Button text elements
+        const sendBtnIcon = document.getElementById('send-btn-icon');
+        const sendBtnText = document.getElementById('send-btn-text');
+        const sendBtnMobileIcon = document.getElementById('send-btn-mobile-icon');
+        const sendBtnMobileText = document.getElementById('send-btn-mobile-text');
+        
+        // Form inputs
+        const deviceAddressInput = document.getElementById('device-address');
+        const groupAddressInput = document.getElementById('group-address');
+        const logLevelSelect = document.getElementById('log-level-select');
+        const eventNameInput = document.getElementById('event-name');
+        const messageDataInput = document.getElementById('message-data');
+        const receiverIdInput = document.getElementById('receiver-id');
+        const receiverGroupInput = document.getElementById('receiver-group');
+        const messageFlagsInput = document.getElementById('message-flags');
+        const subscribeEventInput = document.getElementById('subscribe-event');
+
+        // Stats
+        const sentCountEl = document.getElementById('sent-count');
+        const receivedCountEl = document.getElementById('received-count');
+        const uptimeEl = document.getElementById('uptime');
+
+        // Tab handling
+        document.querySelectorAll('.sidebar-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                
+                tab.classList.add('active');
+                document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
+            });
+        });
+
+        // Connection Modal Toggle
+        connectionStatusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // Position modal relative to connection badge
+            const rect = connectionStatusBtn.getBoundingClientRect();
+            connectionModal.style.top = (rect.bottom + 8) + 'px';
+            connectionModal.style.right = (window.innerWidth - rect.right) + 'px';
+            
+            connectionModal.classList.toggle('show');
+        });
+
+        // Close connection modal when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!connectionStatusBtn.contains(e.target) && !connectionModal.contains(e.target)) {
+                connectionModal.classList.remove('show');
+            }
+        });
+
+        // Accordion functionality
+        function toggleAccordion(header, content) {
+            header.addEventListener('click', () => {
+                const isCollapsed = content.classList.contains('collapsed');
+                
+                if (isCollapsed) {
+                    content.classList.remove('collapsed');
+                    header.classList.remove('collapsed');
+                } else {
+                    content.classList.add('collapsed');
+                    header.classList.add('collapsed');
+                }
+            });
+        }
+
+        // Initialize accordions
+        toggleAccordion(settingsAccordionHeader, settingsAccordionContent);
+
+        // Sync mobile and desktop form inputs
+        function syncInputs(desktop, mobile) {
+            if (desktop && mobile) {
+                desktop.addEventListener('input', () => mobile.value = desktop.value);
+                mobile.addEventListener('input', () => desktop.value = mobile.value);
+            }
+        }
+
+        // Sync desktop and mobile form inputs with localStorage saving
+        function syncInputsWithSave(desktop, mobile) {
+            if (desktop && mobile) {
+                desktop.addEventListener('input', () => {
+                    mobile.value = desktop.value;
+                    saveFormData();
+                });
+                mobile.addEventListener('input', () => {
+                    desktop.value = mobile.value;
+                    saveFormData();
+                });
+            } else if (desktop) {
+                desktop.addEventListener('input', saveFormData);
+            } else if (mobile) {
+                mobile.addEventListener('input', saveFormData);
+            }
+        }
+
+        // Update waitFor UI based on toggle state
+        function updateWaitForUI() {
+            const isEnabled = (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked;
+            
+            // Show/hide configuration sections
+            if (waitForConfig) waitForConfig.style.display = isEnabled ? 'block' : 'none';
+            if (waitForConfigMobile) waitForConfigMobile.style.display = isEnabled ? 'block' : 'none';
+            
+            // Update button text and icons
+            const buttonText = isEnabled ? 'Send & Wait' : 'Send Message';
+            const buttonIcon = isEnabled ? '⏳' : '📤';
+            
+            if (sendBtnText) sendBtnText.textContent = buttonText;
+            if (sendBtnIcon) sendBtnIcon.textContent = buttonIcon;
+            if (sendBtnMobileText) sendBtnMobileText.textContent = buttonText;
+            if (sendBtnMobileIcon) sendBtnMobileIcon.textContent = buttonIcon;
+        }
+        
+        // Sync checkbox states
+        function syncCheckboxes(desktop, mobile) {
+            if (desktop && mobile) {
+                desktop.addEventListener('change', () => {
+                    mobile.checked = desktop.checked;
+                    updateWaitForUI();
+                    saveFormData();
+                });
+                mobile.addEventListener('change', () => {
+                    desktop.checked = mobile.checked;
+                    updateWaitForUI();
+                    saveFormData();
+                });
+            }
+        }
+        
+        // Sync all form inputs with auto-save
+        syncInputsWithSave(eventNameInput, eventNameMobile);
+        syncInputsWithSave(messageDataInput, messageDataMobile);
+        syncInputsWithSave(receiverIdInput, receiverIdMobile);
+        syncInputsWithSave(receiverGroupInput, receiverGroupMobile);
+        syncInputsWithSave(messageFlagsInput, messageFlagsMobile);
+        syncInputsWithSave(subscribeEventInput, subscribeEventMobile);
+        syncInputsWithSave(expectedEventInput, expectedEventMobile);
+        syncInputsWithSave(waitForTimeoutInput, waitForTimeoutMobile);
+        
+        // Sync checkboxes
+        syncCheckboxes(waitForResponseCheckbox, waitForResponseMobileCheckbox);
+        syncCheckboxes(filterBySenderCheckbox, filterBySenderMobileCheckbox);
+
+        // Save device and group address changes
+        if (deviceAddressInput) deviceAddressInput.addEventListener('input', saveFormData);
+        if (groupAddressInput) groupAddressInput.addEventListener('input', saveFormData);
+        
+        // Handle log level changes
+        if (logLevelSelect) {
+            logLevelSelect.addEventListener('change', () => {
+                currentLogLevel = parseInt(logLevelSelect.value);
+                saveFormData();
+                
+                // If already connected, show message about reconnecting for log level change
+                if (eventMsg && eventMsg.isConnected()) {
+                    addMessage('info', 'System', `Log level changed to ${getLogLevelName(currentLogLevel)}. Reconnect to apply.`);
+                }
+            });
+        }
+        
+        // Helper function to get log level name
+        function getLogLevelName(level) {
+            const names = {
+                '-999': 'Silent',
+                '0': 'Error', 
+                '1': 'Warning',
+                '2': 'Log',
+                '3': 'Info',
+                '4': 'Debug',
+                '5': 'Trace'
+            };
+            return names[level] || 'Unknown';
+        }
+
+        // Toggle sidebar
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        
+        toggleSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            const isCollapsed = sidebar.classList.contains('collapsed');
+            toggleSidebarBtn.querySelector('.sidebar-text').textContent = isCollapsed ? 'Menu' : 'Close';
+            
+            // Handle mobile overlay
+            if (window.innerWidth <= 768) {
+                sidebarOverlay.classList.toggle('show', !isCollapsed);
+            }
+        });
+        
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.add('collapsed');
+            sidebarOverlay.classList.remove('show');
+            toggleSidebarBtn.querySelector('.sidebar-text').textContent = 'Menu';
+        });
+
+        // View mode toggle
+        viewNormalBtn.addEventListener('click', () => {
+            viewMode = 'normal';
+            viewNormalBtn.classList.add('active');
+            viewCompactBtn.classList.remove('active');
+            updateMessageView();
+        });
+
+        viewCompactBtn.addEventListener('click', () => {
+            viewMode = 'compact';
+            viewCompactBtn.classList.add('active');
+            viewNormalBtn.classList.remove('active');
+            updateMessageView();
+        });
+
+        // Update message view
+        function updateMessageView() {
+            document.querySelectorAll('.message').forEach(msg => {
+                msg.classList.toggle('compact', viewMode === 'compact');
+            });
+        }
+
+        // Filter messages
+        filterInput.addEventListener('input', (e) => {
+            messageFilter = e.target.value.toLowerCase();
+            filterMessages();
+        });
+
+        function filterMessages() {
+            document.querySelectorAll('.message').forEach(msg => {
+                const eventName = msg.querySelector('.message-event').textContent.toLowerCase();
+                msg.style.display = eventName.includes(messageFilter) ? 'flex' : 'none';
+            });
+        }
+
+        // Update uptime
+        setInterval(() => {
+            if (connectTime) {
+                const elapsed = Date.now() - connectTime;
+                const minutes = Math.floor(elapsed / 60000);
+                const seconds = Math.floor((elapsed % 60000) / 1000);
+                uptimeEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+        }, 1000);
+
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            statusIndicator.classList.toggle('connected', connected);
+            const logLevelText = ` (${getLogLevelName(currentLogLevel)})`;
+            statusText.textContent = connected ? `Connected${logLevelText}` : `Disconnected${logLevelText}`;
+            
+            // Update connection action icon
+            const connectionAction = document.getElementById('connection-action');
+            connectionAction.textContent = connected ? '⛔' : '🔗';
+            
+            // Show/hide buttons based on connection state
+            connectBtn.style.display = connected ? 'none' : 'flex';
+            disconnectBtn.style.display = connected ? 'flex' : 'none';
+            
+            // Update form states
+            if (sendBtn) sendBtn.disabled = !connected;
+            if (sendBtnMobile) sendBtnMobile.disabled = !connected;
+            if (savePresetBtn) savePresetBtn.disabled = !connected;
+            if (savePresetBtnMobile) savePresetBtnMobile.disabled = !connected;
+            if (addPresetBtn) addPresetBtn.style.display = connected ? 'flex' : 'none';
+            
+            // Disable address inputs when connected
+            deviceAddressInput.disabled = connected;
+            groupAddressInput.disabled = connected;
+            
+            // Hide connection modal when connected
+            if (connected) {
+                connectionModal.classList.remove('show');
+                connectTime = Date.now();
+            } else {
+                connectTime = null;
+                uptimeEl.textContent = '00:00';
+            }
+        }
+
+        // Add message to UI
+        function addMessage(type, eventName, data, metadata = null, customTimestamp = null) {
+            // Clear empty state
+            if (messageCount === 0) {
+                messagesContainer.innerHTML = '';
+            }
+            messageCount++;
+
+            // Update counters
+            if (type === 'sent') sentCount++;
+            else if (type === 'received') receivedCount++;
+            
+            sentCountEl.textContent = sentCount;
+            receivedCountEl.textContent = receivedCount;
+
+            const message = document.createElement('div');
+            message.className = `message ${viewMode === 'compact' ? 'compact' : ''}`;
+            
+            // Use custom timestamp if provided (from library), otherwise create new one
+            const timestampDate = customTimestamp || new Date();
+            const timestamp = timestampDate.toLocaleTimeString() + '.' + String(timestampDate.getMilliseconds()).padStart(3, '0');
+            let icon, iconClass;
+            
+            if (type === 'sent') {
+                icon = '↗️';
+                iconClass = 'sent';
+            } else if (type === 'received') {
+                icon = '↘️';
+                iconClass = 'received';
+            } else if (type === 'error') {
+                icon = '⚠️';
+                iconClass = 'error';
+            } else {
+                icon = 'ℹ️';
+                iconClass = 'info';
+            }
+
+            let metaInfo = '';
+            if (metadata) {
+                metaInfo = `<span>D${metadata.senderId}→${metadata.receiverId}</span><span>G${metadata.senderGroupId}→${metadata.receiverGroupId}</span>`;
+                // Add RTT if available
+                if (metadata.rtt) {
+                    metaInfo += `<span>RTT:${metadata.rtt}</span>`;
+                }
+            }
+
+            const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+
+            message.innerHTML = `
+                <div class="message-icon ${iconClass}">${icon}</div>
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="message-event">${eventName}</span>
+                        ${metaInfo ? `<div class="message-meta">${metaInfo}</div>` : ''}
+                        <span class="message-timestamp">${timestamp}</span>
+                    </div>
+                    <div class="message-data">${dataStr}</div>
+                </div>
+            `;
+
+            // Click to show detail
+            message.addEventListener('click', () => showMessageDetail(type, eventName, data, metadata, timestamp));
+
+            messagesContainer.appendChild(message);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Apply filter
+            if (messageFilter && !eventName.toLowerCase().includes(messageFilter)) {
+                message.style.display = 'none';
+            }
+        }
+
+        // Show message detail
+        function showMessageDetail(type, eventName, data, metadata, timestamp) {
+            const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+            
+            messageDetail.innerHTML = `
+                <h3 style="margin-bottom: 1rem;">Message Details</h3>
+                <div style="display: grid; gap: 1rem;">
+                    <div>
+                        <div class="section-title">Event Information</div>
+                        <div style="font-size: 0.8125rem; color: var(--text-secondary);">
+                            <div>Type: ${type}</div>
+                            <div>Event: ${eventName}</div>
+                            <div>Time: ${timestamp}</div>
+                        </div>
+                    </div>
+                    ${metadata ? `
+                        <div>
+                            <div class="section-title">Metadata</div>
+                            <div style="font-size: 0.8125rem; color: var(--text-secondary);">
+                                <div>Sender ID: ${metadata.senderId}</div>
+                                <div>Receiver ID: ${metadata.receiverId}</div>
+                                <div>Sender Group: ${metadata.senderGroupId}</div>
+                                <div>Receiver Group: ${metadata.receiverGroupId}</div>
+                                <div>Message ID: ${metadata.messageId || 'N/A'}</div>
+                                <div>Flags: 0x${(metadata.flags || 0).toString(16).padStart(2, '0')}</div>
+                            </div>
+                        </div>
+                    ` : ''}
+                    <div>
+                        <div class="section-title">Data</div>
+                        <pre style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 6px; font-size: 0.75rem; overflow-x: auto;">${dataStr}</pre>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" style="margin-top: 1rem;" onclick="closeMessageDetail()">Close</button>
+            `;
+            
+            modalOverlay.classList.add('show');
+            messageDetail.classList.add('show');
+        }
+
+        // Close message detail
+        window.closeMessageDetail = function() {
+            modalOverlay.classList.remove('show');
+            messageDetail.classList.remove('show');
+        };
+
+        modalOverlay.addEventListener('click', closeMessageDetail);
+
+        // Update subscription list UI
+        function updateSubscriptionList() {
+            // Update desktop subscription list
+            if (subscriptionList) {
+                subscriptionList.innerHTML = '';
+                subscriptions.forEach(event => {
+                    const tag = document.createElement('div');
+                    tag.className = 'subscription-tag';
+                    tag.innerHTML = `
+                        <span>${event}</span>
+                        <span class="remove" data-event="${event}">×</span>
+                    `;
+                    subscriptionList.appendChild(tag);
+                });
+            }
+            
+            // Update mobile subscription list
+            if (subscriptionListMobile) {
+                subscriptionListMobile.innerHTML = '';
+                subscriptions.forEach(event => {
+                    const tag = document.createElement('div');
+                    tag.className = 'subscription-tag';
+                    tag.innerHTML = `
+                        <span>${event}</span>
+                        <span class="remove" data-event="${event}">×</span>
+                    `;
+                    subscriptionListMobile.appendChild(tag);
+                });
+            }
+        }
+
+        // Connect to device
+        async function connect() {
+            try {
+                connectBtn.innerHTML = '<span class="loading"></span> Connecting...';
+                connectBtn.disabled = true;
+
+                const localAddress = parseInt(deviceAddressInput.value) || 0;
+                const groupAddress = parseInt(groupAddressInput.value) || 0;
+
+                console.log('Connecting with currentLogLevel:', currentLogLevel);
+                
+
+                // Create transport and EventMsg
+                const config = createNordicUARTConfig(localAddress, groupAddress);
+                transport = new WebBLETransport(config);
+                
+                eventMsg = new EventMsg({ 
+                    transport,
+                   logging: {
+                    level: currentLogLevel,
+                    enabled: true,
+                    consola: {
+                        fancy: true,
+                        reporter: 'fancy',
+                        timestamp: true
+                    }
+                   }
+                });
+
+                // Setup event listeners
+                eventMsg.on('connect', () => {
+                    updateConnectionStatus(true);
+                    addMessage('info', 'System', 'Connected to device successfully');
+                });
+
+                eventMsg.on('disconnect', () => {
+                    updateConnectionStatus(false);
+                    addMessage('error', 'System', 'Disconnected from device');
+                });
+
+                eventMsg.on('error', (error) => {
+                    addMessage('error', 'System', `Error: ${error.message}`);
+                });
+
+                // Listen for messages
+                eventMsg.onMessage((eventName, data, metadata) => {
+                    // Check if we're subscribed to this event
+                    if (subscriptions.has('*') || subscriptions.has(eventName)) {
+                        // Skip adding message if we're waiting for this specific event
+                        // (it will be handled by the waitFor response)
+                        if (isWaitingForResponse && waitingForEvent === eventName) {
+                            return; // Don't add duplicate message
+                        }
+                        addMessage('received', eventName, data, metadata);
+                    }
+                });
+
+                // Connect
+                addMessage('info', 'System', `🔍 Connecting with log level: ${getLogLevelName(currentLogLevel)}. Check browser console for detailed logs.`);
+                await eventMsg.connect();
+                
+            } catch (error) {
+                addMessage('error', 'System', `Connection failed: ${error}`);
+                updateConnectionStatus(false);
+            } finally {
+                connectBtn.innerHTML = '<span>🔗</span> Connect';
+                connectBtn.disabled = false;
+            }
+        }
+
+        // Disconnect
+        async function disconnect() {
+            try {
+                if (eventMsg) {
+                    await eventMsg.disconnect();
+                    eventMsg = null;
+                    transport = null;
+                }
+            } catch (error) {
+                addMessage('error', 'System', `Disconnect error: ${error.message}`);
+            }
+        }
+
+        // Send message or send and wait
+        async function sendMessage() {
+            if (isWaitingForResponse) {
+                addMessage('info', 'System', 'Already waiting for a response. Please wait.');
+                return;
+            }
+            
+            try {
+                const eventName = (eventNameInput || eventNameMobile).value || 'test_message';
+                const messageData = (messageDataInput || messageDataMobile).value || '{}';
+                const receiverId = parseInt((receiverIdInput || receiverIdMobile).value) || 255;
+                const receiverGroupId = parseInt((receiverGroupInput || receiverGroupMobile).value) || 0;
+                const flags = parseInt((messageFlagsInput || messageFlagsMobile).value) || 0;
+                const shouldWaitForResponse = (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked;
+
+                // Parse data
+                let data;
+                try {
+                    data = JSON.parse(messageData);
+                } catch {
+                    data = messageData;
+                }
+
+                if (shouldWaitForResponse) {
+                    await sendAndWaitForResponse(eventName, data, receiverId, receiverGroupId, flags);
+                } else {
+                    // Regular send
+                    await eventMsg.send(eventName, data, {
+                        receiverId,
+                        receiverGroupId,
+                        flags
+                    });
+
+                    addMessage('sent', eventName, data, {
+                        senderId: eventMsg.getLocalAddress(),
+                        senderGroupId: eventMsg.getGroupAddress(),
+                        receiverId,
+                        receiverGroupId,
+                        flags
+                    });
+                }
+
+            } catch (error) {
+                addMessage('error', 'System', `Send failed: ${error.message}`);
+            }
+        }
+        
+        // Send message and wait for response (using library's waitFor)
+        async function sendAndWaitForResponse(eventName, data, receiverId, receiverGroupId, flags) {
+            try {
+                isWaitingForResponse = true;
+                updateSendButtonState(true);
+                
+                const expectedEvent = (expectedEventInput || expectedEventMobile).value || 'pong';
+                const timeout = parseInt((waitForTimeoutInput || waitForTimeoutMobile).value) || 5000;
+                const filterBySender = (filterBySenderCheckbox || filterBySenderMobileCheckbox).checked;
+                
+                // Set the event we're waiting for to prevent duplicates
+                waitingForEvent = expectedEvent;
+                
+                
+                
+                // Add sent message
+                addMessage('sent', eventName, data, {
+                    senderId: eventMsg.getLocalAddress(),
+                    senderGroupId: eventMsg.getGroupAddress(),
+                    receiverId,
+                    receiverGroupId,
+                    flags
+                });
+                const startTime = Date.now();
+                // Send the message first
+                console.time('roundtrip');
+                console.time('send');
+                await eventMsg.send(eventName, data, {
+                    receiverId,
+                    receiverGroupId,
+                    flags
+                });
+                console.timeEnd('send');
+                // Use library's waitFor function
+                console.time('waitFor');
+                const waitOptions = { timeout };
+                if (filterBySender) {
+                    waitOptions.filter = (metadata) => metadata.senderId === receiverId;
+                }
+                
+                const response = await eventMsg.waitFor(expectedEvent, waitOptions);
+                const rtt = Date.now() - startTime;
+                console.timeEnd('roundtrip');
+                console.timeEnd('waitFor');
+                console.log(response, rtt);
+                
+                // Add success message with RTT using library's accurate timestamp
+                addMessage('received', expectedEvent, response.data, {
+                    ...response.metadata,
+                    rtt: `${rtt}ms`
+                }, response.metadata.timestamp); // Use library's receive timestamp
+                
+                addMessage('info', 'System', `✅ Response received! Round-trip time: ${rtt}ms`);
+                
+            } catch (error) {
+                if (error.name === 'WaitForTimeoutError') {
+                    addMessage('error', 'System', `⏰ Timeout: No '${(expectedEventInput || expectedEventMobile).value}' response received within ${(waitForTimeoutInput || waitForTimeoutMobile).value}ms`);
+                } else {
+                    addMessage('error', 'System', `Wait for response failed: ${error.message}`);
+                }
+            } finally {
+                isWaitingForResponse = false;
+                waitingForEvent = null;
+                updateSendButtonState(false);
+            }
+        }
+        
+        // Update send button state during waiting
+        function updateSendButtonState(isWaiting) {
+            const waitingText = isWaiting ? 'Waiting...' : (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked ? 'Send & Wait' : 'Send Message';
+            const waitingIcon = isWaiting ? '⏱️' : (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked ? '⏳' : '📤';
+            
+            if (sendBtnText) sendBtnText.textContent = waitingText;
+            if (sendBtnIcon) sendBtnIcon.textContent = waitingIcon;
+            if (sendBtnMobileText) sendBtnMobileText.textContent = waitingText;
+            if (sendBtnMobileIcon) sendBtnMobileIcon.textContent = waitingIcon;
+            
+            // Disable buttons while waiting
+            if (sendBtn) sendBtn.disabled = isWaiting || !eventMsg?.isConnected();
+            if (sendBtnMobile) sendBtnMobile.disabled = isWaiting || !eventMsg?.isConnected();
+        }
+
+        // Quick ping
+        async function quickPing() {
+            if (!eventMsg || !eventMsg.isConnected()) return;
+            
+            try {
+                const pingData = { timestamp: Date.now(), message: 'Quick ping!' };
+                await eventMsg.send('ping', pingData, { receiverId: 1 });
+                addMessage('sent', 'ping', pingData, {
+                    senderId: eventMsg.getLocalAddress(),
+                    senderGroupId: eventMsg.getGroupAddress(),
+                    receiverId: 1,
+                    receiverGroupId: 0,
+                    flags: 0
+                });
+            } catch (error) {
+                addMessage('error', 'System', `Ping failed: ${error.message}`);
+            }
+        }
+
+        // Subscribe to event
+        function subscribeToEvent() {
+            const input = subscribeEventInput || subscribeEventMobile;
+            const eventName = input.value.trim();
+            if (eventName && !subscriptions.has(eventName)) {
+                subscriptions.add(eventName);
+                updateSubscriptionList();
+                saveSubscriptions(); // Save to localStorage
+                input.value = '';
+                // Clear both inputs to keep them in sync
+                if (subscribeEventInput) subscribeEventInput.value = '';
+                if (subscribeEventMobile) subscribeEventMobile.value = '';
+            }
+        }
+
+        // Unsubscribe from event
+        function unsubscribeFromEvent(eventName) {
+            subscriptions.delete(eventName);
+            updateSubscriptionList();
+            saveSubscriptions(); // Save to localStorage
+        }
+
+        // Custom Presets Functions
+        function updatePresetsBar() {
+            // Clear existing presets
+            presetsList.innerHTML = '';
+            
+            // Add presets
+            Object.entries(customPresets).forEach(([name, preset]) => {
+                const chip = document.createElement('div');
+                chip.className = 'preset-chip';
+                chip.innerHTML = `
+                    <span>⚡</span>
+                    <span>${name}</span>
+                    <span class="delete" data-preset="${name}">×</span>
+                `;
+                chip.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('delete')) {
+                        deletePreset(name);
+                    } else {
+                        executePreset(preset);
+                    }
+                });
+                presetsList.appendChild(chip);
+            });
+        }
+
+        function showPresetModal() {
+            presetNameInput.value = '';
+            presetModal.classList.add('show');
+            modalOverlay.classList.add('show');
+            modalOverlay.onclick = hidePresetModal;
+            presetNameInput.focus();
+        }
+
+        function hidePresetModal() {
+            presetModal.classList.remove('show');
+            if (!messageDetail.classList.contains('show')) {
+                modalOverlay.classList.remove('show');
+            }
+            modalOverlay.onclick = closeMessageDetail;
+        }
+
+        function savePreset() {
+            const name = presetNameInput.value.trim();
+            if (!name) return;
+            
+            // Get current form values
+            const preset = {
+                eventName: eventNameInput.value,
+                data: messageDataInput.value,
+                receiverId: receiverIdInput.value,
+                receiverGroup: receiverGroupInput.value,
+                flags: messageFlagsInput.value
+            };
+            
+            customPresets[name] = preset;
+            savePresets();
+            updatePresetsBar();
+            hidePresetModal();
+        }
+
+        function deletePreset(name) {
+            delete customPresets[name];
+            savePresets();
+            updatePresetsBar();
+        }
+
+        async function executePreset(preset) {
+            if (!eventMsg || !eventMsg.isConnected()) return;
+            
+            try {
+                // Parse data
+                let data;
+                try {
+                    data = JSON.parse(preset.data);
+                } catch {
+                    data = preset.data;
+                }
+                
+                // Send message
+                await eventMsg.send(preset.eventName, data, {
+                    receiverId: parseInt(preset.receiverId),
+                    receiverGroupId: parseInt(preset.receiverGroup),
+                    flags: parseInt(preset.flags)
+                });
+                
+                addMessage('sent', preset.eventName, data, {
+                    senderId: eventMsg.getLocalAddress(),
+                    senderGroupId: eventMsg.getGroupAddress(),
+                    receiverId: parseInt(preset.receiverId),
+                    receiverGroupId: parseInt(preset.receiverGroup),
+                    flags: parseInt(preset.flags)
+                });
+            } catch (error) {
+                addMessage('error', 'System', `Preset execution failed: ${error.message}`);
+            }
+        }
+
+        // Clear messages
+        function clearMessages() {
+            messageCount = 0;
+            sentCount = 0;
+            receivedCount = 0;
+            sentCountEl.textContent = '0';
+            receivedCountEl.textContent = '0';
+            messagesContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <p>No messages yet. Connect to a device to start.</p>
+                </div>
+            `;
+        }
+
+        // Event Listeners - Desktop
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+        if (clearBtn) clearBtn.addEventListener('click', clearMessages);
+        if (subscribeBtn) subscribeBtn.addEventListener('click', subscribeToEvent);
+        
+        // Event Listeners - Mobile
+        sendBtnMobile.addEventListener('click', sendMessage);
+        savePresetBtnMobile.addEventListener('click', showPresetModal);
+        subscribeBtnMobile.addEventListener('click', subscribeToEvent);
+        
+        // Preset modal
+        if (addPresetBtn) addPresetBtn.addEventListener('click', showPresetModal);
+        if (savePresetBtn) savePresetBtn.addEventListener('click', showPresetModal);
+        confirmPresetBtn.addEventListener('click', savePreset);
+        cancelPresetBtn.addEventListener('click', hidePresetModal);
+        
+        // Enter key support
+        if (subscribeEventInput) {
+            subscribeEventInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') subscribeToEvent();
+            });
+        }
+        
+        subscribeEventMobile.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') subscribeToEvent();
+        });
+        
+        presetNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') savePreset();
+        });
+
+        // Subscription list clicks - Desktop
+        if (subscriptionList) {
+            subscriptionList.addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove')) {
+                    const eventName = e.target.getAttribute('data-event');
+                    unsubscribeFromEvent(eventName);
+                }
+            });
+        }
+
+        // Subscription list clicks - Mobile
+        subscriptionListMobile.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove')) {
+                const eventName = e.target.getAttribute('data-event');
+                unsubscribeFromEvent(eventName);
+            }
+        });
+
+        // Initialize
+        loadPresets();
+        loadFormData();
+        loadSubscriptions();
+        updateConnectionStatus(false);
+        updateSubscriptionList();
+        updateWaitForUI(); // Initialize waitFor UI state
+        
+        // Start with sidebar collapsed on mobile
+        if (window.innerWidth <= 480) {
+            if (sidebar) {
+                sidebar.classList.add('collapsed');
+                if (toggleSidebarBtn) toggleSidebarBtn.querySelector('.sidebar-text').textContent = 'Menu';
+            }
+        }
+
+        // Accordion starts collapsed by default (already set in HTML)
+
+        // Check Web Bluetooth support
+        if (!('bluetooth' in navigator)) {
+            addMessage('error', 'System', 'Web Bluetooth not supported. Please use Chrome, Edge, or Opera.');
+            connectBtn.disabled = true;
+        }
+        
+        // Add welcome message about logging
+        addMessage('info', 'System', `🔍 Logging system initialized with ${getLogLevelName(currentLogLevel)} level. Open browser console to see detailed logs. Change log level in connection settings.`);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (eventMsg) {
+                eventMsg.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
