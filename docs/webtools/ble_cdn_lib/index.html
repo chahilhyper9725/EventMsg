@@ -2161,7 +2161,7 @@
                 }
             }
 
-            const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+            const dataStr = data;
 
             message.innerHTML = `
                 <div class="message-icon ${iconClass}">${icon}</div>
@@ -2189,7 +2189,7 @@
 
         // Show message detail
         function showMessageDetail(type, eventName, data, metadata, timestamp) {
-            const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+            const dataStr = data;
             
             messageDetail.innerHTML = `
                 <h3 style="margin-bottom: 1rem;">Message Details</h3>
@@ -2364,13 +2364,8 @@
                 const flags = parseInt((messageFlagsInput || messageFlagsMobile).value) || 0;
                 const shouldWaitForResponse = (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked;
 
-                // Parse data
-                let data;
-                try {
-                    data = JSON.parse(messageData);
-                } catch {
-                    data = messageData;
-                }
+                // Use raw data - no JSON parsing
+                const data = messageData;
 
                 if (shouldWaitForResponse) {
                     await sendAndWaitForResponse(eventName, data, receiverId, receiverGroupId, flags);
@@ -2589,13 +2584,8 @@
             if (!eventMsg || !eventMsg.isConnected()) return;
             
             try {
-                // Parse data
-                let data;
-                try {
-                    data = JSON.parse(preset.data);
-                } catch {
-                    data = preset.data;
-                }
+                // Use raw data - no JSON parsing
+                const data = preset.data;
                 
                 // Send message
                 await eventMsg.send(preset.eventName, data, {

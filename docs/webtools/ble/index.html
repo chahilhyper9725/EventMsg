@@ -15,16 +15,44 @@
             display: flex;
             min-height: 100vh;
             background: #f5f5f5;
+            touch-action: manipulation;
+            -webkit-text-size-adjust: 100%;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .sidebar {
             width: 300px;
+            min-width: 280px;
             background: white;
             padding: 20px;
             border-right: 1px solid #eee;
             display: flex;
             flex-direction: column;
             gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 260px;
+                min-width: 240px;
+                padding: 15px;
+                gap: 15px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                min-width: unset;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                padding: 15px;
+                gap: 15px;
+            }
         }
 
         .main-content {
@@ -34,6 +62,22 @@
             flex-direction: column;
             gap: 20px;
             max-width: calc(100% - 300px);
+            min-width: 0;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                padding: 15px;
+                gap: 15px;
+                max-width: calc(100% - 260px);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                max-width: 100%;
+                padding: 15px;
+            }
         }
 
         .card {
@@ -60,6 +104,15 @@
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+            touch-action: manipulation;
+            min-height: 20px;
+        }
+
+        @media (max-width: 768px) {
+            input[type="text"] {
+                font-size: 16px;
+                padding: 10px;
+            }
         }
 
         input[type="text"]:focus {
@@ -77,6 +130,10 @@
             cursor: pointer;
             font-size: 14px;
             transition: background 0.2s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 44px;
+            min-width: 44px;
         }
 
         button:hover {
@@ -93,6 +150,28 @@
             grid-template-columns: repeat(6, 1fr);
             gap: 10px;
             margin-bottom: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .stats {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
+                margin-bottom: 15px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
         }
 
         .stat-card {
@@ -136,6 +215,9 @@
             align-items: center;
             gap: 8px;
             font-size: 13px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 44px;
         }
 
         .message-content {
@@ -155,6 +237,22 @@
             font-size: 12px;
             color: white;
             margin-left: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 768px) {
+            .badge {
+                font-size: 11px;
+                padding: 2px 6px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .badge {
+                font-size: 10px;
+                padding: 1px 4px;
+            }
         }
 
         .badge-size-small { background: #4caf50; }
@@ -176,6 +274,13 @@
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .metadata-grid {
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
         }
 
         .metadata-item {
@@ -305,6 +410,25 @@
             margin-left: auto;
         }
 
+        .message-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .message-grid {
+                gap: 15px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .message-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+        }
+
         .message-config {
             display: flex;
             flex-direction: column;
@@ -324,6 +448,13 @@
             gap: 10px;
         }
 
+        @media (max-width: 768px) {
+            .config-grid {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+        }
+
         textarea {
             width: 100%;
             padding: 8px;
@@ -334,6 +465,16 @@
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            touch-action: manipulation;
+            min-height: 40px;
+        }
+
+        @media (max-width: 768px) {
+            textarea {
+                font-size: 16px;
+                padding: 10px;
+                min-height: 60px;
+            }
         }
 
         textarea:focus {
@@ -378,6 +519,16 @@
             padding: 12px;
             flex: 1;
             margin: 0;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 44px;
+        }
+
+        @media (max-width: 768px) {
+            .preset-btn {
+                padding: 14px;
+                font-size: 16px;
+            }
         }
 
         .preset-btn:hover {
@@ -414,6 +565,21 @@
             margin-bottom: 15px;
             color: #444;
             font-size: 16px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 20px;
+            }
+            
+            h2 {
+                font-size: 18px;
+            }
+            
+            h3 {
+                font-size: 16px;
+                margin-bottom: 12px;
+            }
         }
     </style>
 </head>
@@ -485,7 +651,7 @@
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="message-grid">
             <!-- Send Message Section -->
             <div class="card">
                 <h2>Send Message</h2>
