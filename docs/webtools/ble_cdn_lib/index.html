@@ -1411,7 +1411,7 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Message Data</label>
-                                <input type="text" class="form-input" id="message-data" value='{"message": "Hello ESP32!"}' placeholder='{"key": "value"}'>
+                                <textarea class="form-input" id="message-data" placeholder="Raw binary data or text" style="min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
                             </div>
                             
                             <!-- Wait for Response Toggle -->
@@ -1514,7 +1514,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Message Data</label>
-                                    <input type="text" class="form-input" id="message-data-mobile" value='{"message": "Hello ESP32!"}' placeholder='{"key": "value"}'>
+                                    <textarea class="form-input" id="message-data-mobile" placeholder="Raw binary data or text" style="min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
                                 </div>
                                 
                                 <!-- Wait for Response Toggle -->
@@ -1730,8 +1730,8 @@
                 if (eventNameInput) eventNameInput.value = formData.eventName || 'test_message';
                 if (eventNameMobile) eventNameMobile.value = formData.eventName || 'test_message';
                 
-                if (messageDataInput) messageDataInput.value = formData.messageData || '{"message": "Hello ESP32!"}';
-                if (messageDataMobile) messageDataMobile.value = formData.messageData || '{"message": "Hello ESP32!"}';
+                if (messageDataInput) messageDataInput.value = formData.messageData || '';
+                if (messageDataMobile) messageDataMobile.value = formData.messageData || '';
                 
                 if (receiverIdInput) receiverIdInput.value = formData.receiverId || '1';
                 if (receiverIdMobile) receiverIdMobile.value = formData.receiverId || '1';
@@ -2280,6 +2280,9 @@
 
                 // Create transport and EventMsg
                 const config = createNordicUARTConfig(localAddress, groupAddress);
+                config.filters = [{
+                    services: [0xAE06]
+                }];
                 transport = new WebBLETransport(config);
                 
                 eventMsg = new EventMsg({ 
@@ -2358,7 +2361,7 @@
             
             try {
                 const eventName = (eventNameInput || eventNameMobile).value || 'test_message';
-                const messageData = (messageDataInput || messageDataMobile).value || '{}';
+                const messageData = (messageDataInput || messageDataMobile).value;
                 const receiverId = parseInt((receiverIdInput || receiverIdMobile).value) || 255;
                 const receiverGroupId = parseInt((receiverGroupInput || receiverGroupMobile).value) || 0;
                 const flags = parseInt((messageFlagsInput || messageFlagsMobile).value) || 0;
