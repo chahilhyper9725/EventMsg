@@ -548,6 +548,25 @@
             flex: 1;
         }
 
+        .presets-actions { display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }
+
+        .preset-toolbar-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            height: 28px;
+            padding: 0 10px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .preset-toolbar-btn:hover { background: var(--accent); color: white; }
+
         .preset-chip {
             padding: 0.375rem 0.75rem;
             background: var(--bg-tertiary);
@@ -559,7 +578,7 @@
             white-space: nowrap;
             display: flex;
             align-items: center;
-            gap: 0.375rem;
+            gap: 0.5rem;
         }
 
         .preset-chip:hover {
@@ -569,15 +588,10 @@
             transform: translateY(-2px);
         }
 
-        .preset-chip .delete {
-            margin-left: 0.25rem;
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
-        }
-
-        .preset-chip:hover .delete {
-            opacity: 1;
-        }
+        .chip-actions { display: inline-flex; gap: 0.25rem; margin-left: 0.25rem; }
+        .chip-btn { background: transparent; border: none; color: inherit; cursor: pointer; padding: 0 0.25rem; border-radius: 6px; }
+        .chip-btn:hover { background: rgba(255,255,255,0.08); }
+        .chip-btn.delete:hover { background: rgba(239, 68, 68, 0.2); color: var(--error); }
 
         .add-preset-btn {
             padding: 0.375rem;
@@ -708,6 +722,7 @@
             padding: var(--space-md);
             overflow-y: auto;
             background: var(--bg-primary);
+            scrollbar-width: thin;
         }
 
         /* Compact Message Style */
@@ -770,6 +785,7 @@
             align-items: center;
             gap: 0.75rem;
             margin-bottom: 0.25rem;
+            flex-wrap: wrap;
         }
 
         .message.compact .message-header {
@@ -798,8 +814,10 @@
             font-size: 0.75rem;
             color: var(--text-secondary);
             line-height: 1.4;
-            word-break: break-all;
+            word-break: break-word;
             margin-top: 0.25rem;
+            max-height: 200px;
+            overflow: auto;
         }
 
         .message.compact .message-data {
@@ -1411,7 +1429,15 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Message Data</label>
-                                <textarea class="form-input" id="message-data" placeholder="Raw binary data or text" style="min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
+                                <div class="input-row">
+                                    <select class="form-input" id="data-mode" aria-label="Data Mode" style="max-width: 180px;">
+                                        <option value="text">Text</option>
+                                        <option value="hex">Hex</option>
+                                        <option value="base64">Base64</option>
+                                        <option value="json">JSON</option>
+                                    </select>
+                                    <textarea class="form-input" id="message-data" placeholder="Enter data per selected mode" style="min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
+                                </div>
                             </div>
                             
                             <!-- Wait for Response Toggle -->
@@ -1514,7 +1540,15 @@
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Message Data</label>
-                                    <textarea class="form-input" id="message-data-mobile" placeholder="Raw binary data or text" style="min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
+                                    <div class="input-row">
+                                        <select class="form-input" id="data-mode-mobile" aria-label="Data Mode" style="max-width: 180px;">
+                                            <option value="text">Text</option>
+                                            <option value="hex">Hex</option>
+                                            <option value="base64">Base64</option>
+                                            <option value="json">JSON</option>
+                                        </select>
+                                        <textarea class="form-input" id="message-data-mobile" placeholder="Enter data per selected mode" style="min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
+                                    </div>
                                 </div>
                                 
                                 <!-- Wait for Response Toggle -->
@@ -1633,9 +1667,12 @@
                     <div class="message-presets" id="message-presets">
                         <div class="presets-content">
                             <div class="presets-list" id="presets-list"></div>
-                            <button class="add-preset-btn" id="add-preset-btn-header" title="Save current message as preset">
-                                <span>+</span>
-                            </button>
+                            <div class="presets-actions">
+                                <button class="preset-toolbar-btn" id="add-preset-btn-header" title="Save current as preset" aria-label="Save current as preset">💾 Save</button>
+                                <button class="preset-toolbar-btn" id="export-presets-btn" title="Export presets" aria-label="Export presets">⬇️ Export</button>
+                                <label class="preset-toolbar-btn" id="import-presets-label" for="import-presets-input" title="Import presets" aria-label="Import presets" tabindex="0" role="button">⬆️ Import</label>
+                                <input type="file" id="import-presets-input" accept="application/json" style="display:none" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1686,6 +1723,7 @@
         let customWaitResolver = null; // Custom wait promise resolver
         let waitStartTime = null; // When we started waiting
         let currentLogLevel = 3; // Default log level (Info)
+        let dataModeManual = false; // Whether user manually changed data mode
 
         // Load presets from localStorage
         function loadPresets() {
@@ -1715,7 +1753,8 @@
                 waitForResponse: (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked,
                 expectedEvent: (expectedEventInput || expectedEventMobile).value,
                 waitForTimeout: (waitForTimeoutInput || waitForTimeoutMobile).value,
-                filterBySender: (filterBySenderCheckbox || filterBySenderMobileCheckbox).checked
+                filterBySender: (filterBySenderCheckbox || filterBySenderMobileCheckbox).checked,
+                dataMode: (dataModeSelect || dataModeSelectMobile)?.value || 'text'
             };
             localStorage.setItem('eventmsg-form-data', JSON.stringify(formData));
         }
@@ -1732,6 +1771,8 @@
                 
                 if (messageDataInput) messageDataInput.value = formData.messageData || '';
                 if (messageDataMobile) messageDataMobile.value = formData.messageData || '';
+                if (dataModeSelect) dataModeSelect.value = formData.dataMode || 'text';
+                if (dataModeSelectMobile) dataModeSelectMobile.value = formData.dataMode || 'text';
                 
                 if (receiverIdInput) receiverIdInput.value = formData.receiverId || '1';
                 if (receiverIdMobile) receiverIdMobile.value = formData.receiverId || '1';
@@ -1822,6 +1863,8 @@
         const receiverIdMobile = document.getElementById('receiver-id-mobile');
         const receiverGroupMobile = document.getElementById('receiver-group-mobile');
         const messageFlagsMobile = document.getElementById('message-flags-mobile');
+        const dataModeSelect = document.getElementById('data-mode');
+        const dataModeSelectMobile = document.getElementById('data-mode-mobile');
         const sendBtnMobile = document.getElementById('send-btn-mobile');
         const savePresetBtnMobile = document.getElementById('save-preset-btn-mobile');
         const subscribeEventMobile = document.getElementById('subscribe-event-mobile');
@@ -1918,21 +1961,63 @@
             }
         }
 
+        // Heuristic data mode detection
+        function detectDataMode(value) {
+            const trimmed = (value || '').trim();
+            if (!trimmed) return 'text';
+            // JSON
+            if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
+                try { JSON.parse(trimmed); return 'json'; } catch (_) {}
+            }
+            // HEX (pairs of hex with optional spaces)
+            const hexClean = trimmed.replace(/\s+/g, '');
+            if (hexClean.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hexClean) && hexClean.length >= 2) {
+                return 'hex';
+            }
+            // Base64
+            if (/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) && trimmed.length % 4 === 0 && trimmed.length >= 8) {
+                return 'base64';
+            }
+            return 'text';
+        }
+
         // Sync desktop and mobile form inputs with localStorage saving
         function syncInputsWithSave(desktop, mobile) {
             if (desktop && mobile) {
                 desktop.addEventListener('input', () => {
                     mobile.value = desktop.value;
                     saveFormData();
+                    if (!dataModeManual && (desktop === messageDataInput || mobile === messageDataMobile)) {
+                        const mode = detectDataMode(desktop.value);
+                        if (dataModeSelect) dataModeSelect.value = mode;
+                        if (dataModeSelectMobile) dataModeSelectMobile.value = mode;
+                    }
                 });
                 mobile.addEventListener('input', () => {
                     desktop.value = mobile.value;
                     saveFormData();
+                    if (!dataModeManual && (desktop === messageDataInput || mobile === messageDataMobile)) {
+                        const mode = detectDataMode(mobile.value);
+                        if (dataModeSelect) dataModeSelect.value = mode;
+                        if (dataModeSelectMobile) dataModeSelectMobile.value = mode;
+                    }
                 });
             } else if (desktop) {
-                desktop.addEventListener('input', saveFormData);
+                desktop.addEventListener('input', (e) => {
+                    saveFormData();
+                    if (!dataModeManual && desktop === messageDataInput) {
+                        const mode = detectDataMode(desktop.value);
+                        if (dataModeSelect) dataModeSelect.value = mode;
+                    }
+                });
             } else if (mobile) {
-                mobile.addEventListener('input', saveFormData);
+                mobile.addEventListener('input', (e) => {
+                    saveFormData();
+                    if (!dataModeManual && mobile === messageDataMobile) {
+                        const mode = detectDataMode(mobile.value);
+                        if (dataModeSelectMobile) dataModeSelectMobile.value = mode;
+                    }
+                });
             }
         }
 
@@ -1976,6 +2061,7 @@
         syncInputsWithSave(receiverIdInput, receiverIdMobile);
         syncInputsWithSave(receiverGroupInput, receiverGroupMobile);
         syncInputsWithSave(messageFlagsInput, messageFlagsMobile);
+        syncInputsWithSave(dataModeSelect, dataModeSelectMobile);
         syncInputsWithSave(subscribeEventInput, subscribeEventMobile);
         syncInputsWithSave(expectedEventInput, expectedEventMobile);
         syncInputsWithSave(waitForTimeoutInput, waitForTimeoutMobile);
@@ -1983,6 +2069,10 @@
         // Sync checkboxes
         syncCheckboxes(waitForResponseCheckbox, waitForResponseMobileCheckbox);
         syncCheckboxes(filterBySenderCheckbox, filterBySenderMobileCheckbox);
+
+        // Mark manual mode selection to stop auto-detect overriding user choice
+        if (dataModeSelect) dataModeSelect.addEventListener('change', () => { dataModeManual = true; saveFormData(); });
+        if (dataModeSelectMobile) dataModeSelectMobile.addEventListener('change', () => { dataModeManual = true; saveFormData(); });
 
         // Save device and group address changes
         if (deviceAddressInput) deviceAddressInput.addEventListener('input', saveFormData);
@@ -2115,6 +2205,52 @@
             }
         }
 
+        // Data formatting helpers
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function toHexPreview(bytes, maxBytes = 32) {
+            const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+            const slice = view.slice(0, Math.min(view.length, maxBytes));
+            const hex = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            const suffix = view.length > maxBytes ? ' …' : '';
+            return `0x${hex}${suffix} (${view.length} bytes)`;
+        }
+
+        function formatDataBrief(data) {
+            try {
+                if (data === null || data === undefined) return '';
+                if (typeof data === 'string') return escapeHtml(data);
+                if (typeof Blob !== 'undefined' && data instanceof Blob) return `Blob(${data.size} bytes)`;
+                if (data instanceof ArrayBuffer) return toHexPreview(new Uint8Array(data));
+                if (ArrayBuffer.isView(data)) return toHexPreview(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+                if (typeof data === 'object') return escapeHtml(JSON.stringify(data));
+                return escapeHtml(String(data));
+            } catch (_) {
+                return escapeHtml(String(data));
+            }
+        }
+
+        function formatDataDetailed(data) {
+            try {
+                if (data === null || data === undefined) return '';
+                if (typeof data === 'string') return escapeHtml(data);
+                if (typeof Blob !== 'undefined' && data instanceof Blob) return `Blob(${data.size} bytes)`;
+                if (data instanceof ArrayBuffer) return toHexPreview(new Uint8Array(data));
+                if (ArrayBuffer.isView(data)) return toHexPreview(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+                if (typeof data === 'object') return escapeHtml(JSON.stringify(data, null, 2));
+                return escapeHtml(String(data));
+            } catch (_) {
+                return escapeHtml(String(data));
+            }
+        }
+
         // Add message to UI
         function addMessage(type, eventName, data, metadata = null, customTimestamp = null) {
             // Clear empty state
@@ -2161,7 +2297,7 @@
                 }
             }
 
-            const dataStr = data;
+            const dataStr = formatDataBrief(data);
 
             message.innerHTML = `
                 <div class="message-icon ${iconClass}">${icon}</div>
@@ -2189,7 +2325,7 @@
 
         // Show message detail
         function showMessageDetail(type, eventName, data, metadata, timestamp) {
-            const dataStr = data;
+            const dataStr = formatDataDetailed(data);
             
             messageDetail.innerHTML = `
                 <h3 style="margin-bottom: 1rem;">Message Details</h3>
@@ -2352,6 +2488,38 @@
             }
         }
 
+        // Encode message data from UI based on mode
+        function encodeDataFromUI(raw, mode) {
+            try {
+                switch ((mode || 'text')) {
+                    case 'text':
+                        return raw;
+                    case 'json':
+                        return JSON.parse(raw);
+                    case 'hex': {
+                        const cleaned = raw.replace(/\s+/g, '').toLowerCase();
+                        if (cleaned.length % 2 !== 0) throw new Error('Hex length must be even');
+                        const bytes = new Uint8Array(cleaned.length / 2);
+                        for (let i = 0; i < cleaned.length; i += 2) {
+                            bytes[i / 2] = parseInt(cleaned.substr(i, 2), 16);
+                        }
+                        return bytes;
+                    }
+                    case 'base64': {
+                        const binary = atob(raw);
+                        const bytes = new Uint8Array(binary.length);
+                        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                        return bytes;
+                    }
+                    default:
+                        return raw;
+                }
+            } catch (e) {
+                addMessage('error', 'System', `Data encoding error (${mode}): ${e.message}`);
+                throw e;
+            }
+        }
+
         // Send message or send and wait
         async function sendMessage() {
             if (isWaitingForResponse) {
@@ -2362,13 +2530,13 @@
             try {
                 const eventName = (eventNameInput || eventNameMobile).value || 'test_message';
                 const messageData = (messageDataInput || messageDataMobile).value;
+                const dataMode = (dataModeSelect || dataModeSelectMobile)?.value || 'text';
                 const receiverId = parseInt((receiverIdInput || receiverIdMobile).value) || 255;
                 const receiverGroupId = parseInt((receiverGroupInput || receiverGroupMobile).value) || 0;
                 const flags = parseInt((messageFlagsInput || messageFlagsMobile).value) || 0;
                 const shouldWaitForResponse = (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked;
 
-                // Use raw data - no JSON parsing
-                const data = messageData;
+                const data = encodeDataFromUI(messageData, dataMode);
 
                 if (shouldWaitForResponse) {
                     await sendAndWaitForResponse(eventName, data, receiverId, receiverGroupId, flags);
@@ -2527,16 +2695,33 @@
                 const chip = document.createElement('div');
                 chip.className = 'preset-chip';
                 chip.innerHTML = `
-                    <span>⚡</span>
-                    <span>${name}</span>
-                    <span class="delete" data-preset="${name}">×</span>
+                    <span class="preset-icon" aria-hidden="true">⚡</span>
+                    <span class="preset-name">${name}</span>
+                    <span class="chip-actions">
+                        <button class="chip-btn load" data-preset="${name}" title="Load into form" aria-label="Load preset ${name}">⤴</button>
+                        <button class="chip-btn run" data-preset="${name}" title="Run now" aria-label="Run preset ${name}">▶</button>
+                        <button class="chip-btn delete" data-preset="${name}" title="Delete" aria-label="Delete preset ${name}">×</button>
+                    </span>
                 `;
                 chip.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('delete')) {
-                        deletePreset(name);
-                    } else {
-                        executePreset(preset);
+                    const target = e.target;
+                    const presetName = target.getAttribute('data-preset') || name;
+                    if (target.classList.contains('delete')) {
+                        deletePreset(presetName);
+                        return;
                     }
+                    if (target.classList.contains('run')) {
+                        const p = customPresets[presetName] || preset;
+                        executePreset(p);
+                        return;
+                    }
+                    if (target.classList.contains('load')) {
+                        const p = customPresets[presetName] || preset;
+                        loadPresetIntoForm(p, presetName);
+                        return;
+                    }
+                    // Default click loads to form for quick editing
+                    loadPresetIntoForm(preset, name);
                 });
                 presetsList.appendChild(chip);
             });
@@ -2566,9 +2751,16 @@
             const preset = {
                 eventName: eventNameInput.value,
                 data: messageDataInput.value,
+                dataMode: (dataModeSelect || dataModeSelectMobile)?.value || 'text',
                 receiverId: receiverIdInput.value,
                 receiverGroup: receiverGroupInput.value,
-                flags: messageFlagsInput.value
+                flags: messageFlagsInput.value,
+                waitFor: {
+                    enabled: (waitForResponseCheckbox || waitForResponseMobileCheckbox).checked,
+                    expectedEvent: (expectedEventInput || expectedEventMobile).value,
+                    timeout: (waitForTimeoutInput || waitForTimeoutMobile).value,
+                    filterBySender: (filterBySenderCheckbox || filterBySenderMobileCheckbox).checked
+                }
             };
             
             customPresets[name] = preset;
@@ -2587,26 +2779,64 @@
             if (!eventMsg || !eventMsg.isConnected()) return;
             
             try {
-                // Use raw data - no JSON parsing
-                const data = preset.data;
+                const data = encodeDataFromUI(preset.data, preset.dataMode || 'text');
                 
-                // Send message
-                await eventMsg.send(preset.eventName, data, {
-                    receiverId: parseInt(preset.receiverId),
-                    receiverGroupId: parseInt(preset.receiverGroup),
-                    flags: parseInt(preset.flags)
-                });
-                
-                addMessage('sent', preset.eventName, data, {
-                    senderId: eventMsg.getLocalAddress(),
-                    senderGroupId: eventMsg.getGroupAddress(),
-                    receiverId: parseInt(preset.receiverId),
-                    receiverGroupId: parseInt(preset.receiverGroup),
-                    flags: parseInt(preset.flags)
-                });
+                if (preset.waitFor?.enabled) {
+                    await sendAndWaitForResponse(
+                        preset.eventName,
+                        data,
+                        parseInt(preset.receiverId),
+                        parseInt(preset.receiverGroup),
+                        parseInt(preset.flags)
+                    );
+                } else {
+                    await eventMsg.send(preset.eventName, data, {
+                        receiverId: parseInt(preset.receiverId),
+                        receiverGroupId: parseInt(preset.receiverGroup),
+                        flags: parseInt(preset.flags)
+                    });
+                    
+                    addMessage('sent', preset.eventName, data, {
+                        senderId: eventMsg.getLocalAddress(),
+                        senderGroupId: eventMsg.getGroupAddress(),
+                        receiverId: parseInt(preset.receiverId),
+                        receiverGroupId: parseInt(preset.receiverGroup),
+                        flags: parseInt(preset.flags)
+                    });
+                }
             } catch (error) {
                 addMessage('error', 'System', `Preset execution failed: ${error.message}`);
             }
+        }
+
+        // Load preset into form for editing
+        function loadPresetIntoForm(preset, presetName = null) {
+            if (eventNameInput) eventNameInput.value = preset.eventName || '';
+            if (eventNameMobile) eventNameMobile.value = preset.eventName || '';
+            if (messageDataInput) messageDataInput.value = preset.data || '';
+            if (messageDataMobile) messageDataMobile.value = preset.data || '';
+            const mode = preset.dataMode || 'text';
+            if (dataModeSelect) dataModeSelect.value = mode;
+            if (dataModeSelectMobile) dataModeSelectMobile.value = mode;
+            if (receiverIdInput) receiverIdInput.value = preset.receiverId ?? '1';
+            if (receiverIdMobile) receiverIdMobile.value = preset.receiverId ?? '1';
+            if (receiverGroupInput) receiverGroupInput.value = preset.receiverGroup ?? '0';
+            if (receiverGroupMobile) receiverGroupMobile.value = preset.receiverGroup ?? '0';
+            if (messageFlagsInput) messageFlagsInput.value = preset.flags ?? '0';
+            if (messageFlagsMobile) messageFlagsMobile.value = preset.flags ?? '0';
+            // waitFor settings
+            const wf = preset.waitFor || {};
+            if (waitForResponseCheckbox) waitForResponseCheckbox.checked = !!wf.enabled;
+            if (waitForResponseMobileCheckbox) waitForResponseMobileCheckbox.checked = !!wf.enabled;
+            if (expectedEventInput) expectedEventInput.value = wf.expectedEvent || 'pong';
+            if (expectedEventMobile) expectedEventMobile.value = wf.expectedEvent || 'pong';
+            if (waitForTimeoutInput) waitForTimeoutInput.value = wf.timeout || '5000';
+            if (waitForTimeoutMobile) waitForTimeoutMobile.value = wf.timeout || '5000';
+            if (filterBySenderCheckbox) filterBySenderCheckbox.checked = !!wf.filterBySender;
+            if (filterBySenderMobileCheckbox) filterBySenderMobileCheckbox.checked = !!wf.filterBySender;
+            updateWaitForUI();
+            saveFormData();
+            addMessage('info', 'System', `Preset${presetName ? ' \'${presetName}\'' : ''} loaded into form.`);
         }
 
         // Clear messages
@@ -2641,6 +2871,42 @@
         if (savePresetBtn) savePresetBtn.addEventListener('click', showPresetModal);
         confirmPresetBtn.addEventListener('click', savePreset);
         cancelPresetBtn.addEventListener('click', hidePresetModal);
+
+        // Import/Export presets
+        const exportPresetsBtn = document.getElementById('export-presets-btn');
+        const importPresetsInput = document.getElementById('import-presets-input');
+        if (exportPresetsBtn) {
+            exportPresetsBtn.addEventListener('click', () => {
+                const blob = new Blob([JSON.stringify(customPresets, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'eventmsg-presets.json';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            });
+        }
+        if (importPresetsInput) {
+            importPresetsInput.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                try {
+                    const text = await file.text();
+                    const imported = JSON.parse(text);
+                    if (typeof imported !== 'object' || Array.isArray(imported)) throw new Error('Invalid format');
+                    customPresets = { ...customPresets, ...imported };
+                    savePresets();
+                    updatePresetsBar();
+                    addMessage('info', 'System', `Imported ${Object.keys(imported).length} presets.`);
+                } catch (err) {
+                    addMessage('error', 'System', `Import failed: ${err.message}`);
+                } finally {
+                    e.target.value = '';
+                }
+            });
+        }
         
         // Enter key support
         if (subscribeEventInput) {
